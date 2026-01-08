@@ -1,0 +1,88 @@
+/* Custom styles for AdminLTE React */
+
+/* Smooth transitions */
+.nav-link {
+  transition: all 0.2s ease;
+}
+
+/* Card hover effect */
+.card {
+  transition: box-shadow 0.2s ease;
+}
+
+.card:hover {
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+/* Small box icon adjustment */
+.small-box .small-box-icon {
+  position: absolute;
+  right: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.3;
+}
+
+.small-box .small-box-icon i {
+  font-size: 70px;
+}
+
+/* Table row hover */
+.table-hover tbody tr:hover {
+  background-color: rgba(0, 123, 255, 0.05);
+}
+
+/* Modal backdrop */
+.modal.show {
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Loading spinner center */
+.spinner-border {
+  width: 3rem;
+  height: 3rem;
+}
+
+/* Callout - AdminLTE style */
+.callout {
+  border-radius: 0.25rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.24);
+  background-color: #fff;
+  border-left: 5px solid #e9ecef;
+  margin-bottom: 1rem;
+  padding: 1rem;
+}
+
+.callout h5 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.callout.callout-info {
+  border-left-color: #17a2b8;
+}
+
+.callout.callout-warning {
+  border-left-color: #ffc107;
+}
+
+.callout.callout-danger {
+  border-left-color: #dc3545;
+}
+
+.callout.callout-success {
+  border-left-color: #28a745;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .small-box .inner h3 {
+    font-size: 1.5rem;
+  }
+}

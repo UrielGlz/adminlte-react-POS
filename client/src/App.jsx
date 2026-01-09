@@ -12,6 +12,8 @@ import Navigation from './pages/settings/Navigation'
 import NavigationForm from './pages/settings/NavigationForm'
 import Permissions from './pages/settings/Permissions'
 import PermissionForm from './pages/settings/PermissionForm'
+import StatusCatalog from './pages/catalogs/StatusCatalog'
+import StatusCatalogForm from './pages/catalogs/StatusCatalogForm'
 function App() {
   return (
     <AuthProvider>
@@ -46,10 +48,14 @@ function App() {
           <Route path="settings/permissions" element={<Permissions />} />
           <Route path="settings/permissions/new" element={<PermissionForm />} />
           <Route path="settings/permissions/:id" element={<PermissionForm />} />
-          
+
 
           <Route path="reports/sales" element={<div className="p-4">Sales - Coming soon</div>} />
           <Route path="reports/accounting" element={<div className="p-4">Accounting - Coming soon</div>} />
+
+          <Route path="catalogs/status" element={<StatusCatalog />} />
+          <Route path="catalogs/status/new" element={<StatusCatalogForm />} />
+          <Route path="catalogs/status/:id" element={<StatusCatalogForm />} />
         </Route>
       </Routes>
     </AuthProvider>

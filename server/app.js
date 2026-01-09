@@ -14,6 +14,7 @@ import usersRoutes from './modules/users/users.routes.js'
 import statsRoutes from './modules/stats/stats.routes.js'
 import rolesRoutes from './modules/roles/roles.routes.js'
 import permissionsRoutes from './modules/permissions/permissions.routes.js'
+import statusCatalogRoutes from './modules/catalogs/statusCatalog.routes.js'
 
 
 const app = express()
@@ -54,6 +55,8 @@ app.use('/api/users', usersRoutes)
 app.use('/api/stats', statsRoutes)
 app.use('/api/roles', rolesRoutes)
 app.use('/api/permissions', permissionsRoutes) 
+
+app.use('/api/catalogs/status', statusCatalogRoutes)
 
 // ============ MANEJO DE ERRORES ============
 app.use('/api/*', notFoundHandler)

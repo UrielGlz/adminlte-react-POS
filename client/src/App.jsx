@@ -14,6 +14,19 @@ import Permissions from './pages/settings/Permissions'
 import PermissionForm from './pages/settings/PermissionForm'
 import StatusCatalog from './pages/catalogs/StatusCatalog'
 import StatusCatalogForm from './pages/catalogs/StatusCatalogForm'
+import PaymentMethods from './pages/catalogs/PaymentMethods'
+import PaymentMethodForm from './pages/catalogs/PaymentMethodForm'
+import Products from './pages/catalogs/Products'
+import ProductForm from './pages/catalogs/ProductForm'
+
+import VehicleTypes from './pages/catalogs/VehicleTypes'
+import VehicleTypeForm from './pages/catalogs/VehicleTypeForm'
+import Customers from './pages/customers/Customers'
+import CustomerForm from './pages/customers/CustomerForm'
+import Sales from './pages/sales/Sales'
+import SaleDetail from './pages/sales/SaleDetail'
+
+
 function App() {
   return (
     <AuthProvider>
@@ -56,6 +69,25 @@ function App() {
           <Route path="catalogs/status" element={<StatusCatalog />} />
           <Route path="catalogs/status/new" element={<StatusCatalogForm />} />
           <Route path="catalogs/status/:id" element={<StatusCatalogForm />} />
+          <Route path="catalogs/payment-methods" element={<PaymentMethods />} />
+          <Route path="catalogs/payment-methods/new" element={<PaymentMethodForm />} />
+          <Route path="catalogs/payment-methods/:id" element={<PaymentMethodForm />} />
+          <Route path="catalogs/products" element={<Products />} />
+          <Route path="catalogs/products/new" element={<ProductForm />} />
+          <Route path="catalogs/products/:id" element={<ProductForm />} />
+
+          <Route path="catalogs/vehicle-types" element={<VehicleTypes />} />
+          <Route path="catalogs/vehicle-types/new" element={<VehicleTypeForm />} />
+          <Route path="catalogs/vehicle-types/:id" element={<VehicleTypeForm />} />
+
+          <Route path="customers" element={<Customers />} />
+          <Route path="customers/new" element={<CustomerForm />} />
+          <Route path="customers/:id" element={<CustomerForm />} />
+
+          <Route path="sales" element={<Sales />} />
+          <Route path="sales/:id" element={<SaleDetail />} />
+
+
         </Route>
       </Routes>
     </AuthProvider>

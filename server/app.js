@@ -15,7 +15,12 @@ import statsRoutes from './modules/stats/stats.routes.js'
 import rolesRoutes from './modules/roles/roles.routes.js'
 import permissionsRoutes from './modules/permissions/permissions.routes.js'
 import statusCatalogRoutes from './modules/catalogs/statusCatalog.routes.js'
+import paymentMethodsRoutes from './modules/catalogs/paymentMethods.routes.js'
+import productsRoutes from './modules/catalogs/products.routes.js'
 
+import vehicleTypesRoutes from './modules/catalogs/vehicleTypes.routes.js'
+import customersRoutes from './modules/customers/customers.routes.js'
+import salesRoutes from './modules/sales/sales.routes.js'
 
 const app = express()
 
@@ -55,8 +60,12 @@ app.use('/api/users', usersRoutes)
 app.use('/api/stats', statsRoutes)
 app.use('/api/roles', rolesRoutes)
 app.use('/api/permissions', permissionsRoutes) 
-
 app.use('/api/catalogs/status', statusCatalogRoutes)
+app.use('/api/catalogs/payment-methods', paymentMethodsRoutes)
+app.use('/api/catalogs/products', productsRoutes)
+app.use('/api/catalogs/vehicle-types', vehicleTypesRoutes)
+app.use('/api/customers', customersRoutes)
+app.use('/api/sales', salesRoutes)
 
 // ============ MANEJO DE ERRORES ============
 app.use('/api/*', notFoundHandler)

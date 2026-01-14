@@ -45,10 +45,21 @@ function Customers() {
 
   const filtered = items.filter(i => 
     i.account_name?.toLowerCase().includes(search.toLowerCase()) ||
-    i.account_number?.toLowerCase().includes(search.toLowerCase())
+    i.account_number?.toLowerCase().includes(search.toLowerCase()) ||
+    i.phone_number?.toLowerCase().includes(search.toLowerCase()) ||
+    i.tax_id?.toLowerCase().includes(search.toLowerCase())
   )
 
   const formatCurrency = (val) => val ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val) : '-'
+
+  const formatDate = (dateString) => {
+    if (!dateString) return '-'
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    })
+  }
 
   return (
     <div className="container-fluid p-4">
@@ -67,7 +78,7 @@ function Customers() {
         <div className="card-body py-2">
           <div className="input-group">
             <span className="input-group-text"><i className="bi bi-search"></i></span>
-            <input type="text" className="form-control" placeholder="Search by name or account number..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input type="text" className="form-control" placeholder="Search by name, account, phone or tax ID..." value={search} onChange={(e) => setSearch(e.target.value)} />
             {search && <button className="btn btn-outline-secondary" onClick={() => setSearch('')}><i className="bi bi-x"></i></button>}
           </div>
         </div>
@@ -84,22 +95,36 @@ function Customers() {
                   <tr>
                     <th>Account #</th>
                     <th>Name</th>
-                    <th>Location</th>
+                    <th>State</th>
+                    <th>Phone</th>
+                    <th>Tax ID</th>
                     <th className="text-center">Credit</th>
                     <th className="text-end">Credit Limit</th>
                     <th className="text-end">Balance</th>
+                    <th style={{ width: '130px' }}>Created</th>
+                    <th style={{ width: '130px' }}>Modified</th>
                     <th className="text-center">Active</th>
-                    <th className="text-center" style={{ width: '120px' }}>Actions</th>
+                    <th className="text-center" style={{ width: '100px' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.length === 0 ? (
-                    <tr><td colSpan="8" className="text-center py-4 text-muted">No customers found</td></tr>
+                    <tr><td colSpan="12" className="text-center py-4 text-muted">No customers found</td></tr>
                   ) : filtered.map(item => (
                     <tr key={item.id_customer} className={!item.is_active ? 'table-secondary' : ''}>
                       <td><code className="bg-light px-2 py-1 rounded">{item.account_number}</code></td>
                       <td><i className="bi bi-person me-2 text-primary"></i>{item.account_name}</td>
-                      <td className="text-muted small">{[item.account_state, item.account_country].filter(Boolean).join(', ') || '-'}</td>
+                      <td className="text-muted">{item.account_state || '-'}</td>
+                      <td>
+                        {item.phone_number ? (
+                          <span><i className="bi bi-telephone me-1 text-muted"></i>{item.phone_number}</span>
+                        ) : <span className="text-muted">-</span>}
+                      </td>
+                      <td>
+                        {item.tax_id ? (
+                          <code className="bg-light px-1 rounded">{item.tax_id}</code>
+                        ) : <span className="text-muted">-</span>}
+                      </td>
                       <td className="text-center">
                         {item.has_credit ? (
                           <span className={`badge ${item.is_suspended ? 'bg-danger' : 'bg-success'}`}>
@@ -109,6 +134,18 @@ function Customers() {
                       </td>
                       <td className="text-end">{item.has_credit ? formatCurrency(item.credit_limit) : '-'}</td>
                       <td className="text-end">{item.has_credit ? formatCurrency(item.current_balance) : '-'}</td>
+                      <td>
+                        <small className="text-muted d-block">{formatDate(item.created_at)}</small>
+                        {item.created_by_username && (
+                          <small className="text-muted">by {item.created_by_username}</small>
+                        )}
+                      </td>
+                      <td>
+                        <small className="text-muted d-block">{formatDate(item.updated_at)}</small>
+                        {item.edited_by_username && (
+                          <small className="text-muted">by {item.edited_by_username}</small>
+                        )}
+                      </td>
                       <td className="text-center">
                         <div className="form-check form-switch d-flex justify-content-center">
                           <input className="form-check-input" type="checkbox" checked={item.is_active === 1} onChange={() => toggleActive(item)} style={{ cursor: 'pointer' }} />

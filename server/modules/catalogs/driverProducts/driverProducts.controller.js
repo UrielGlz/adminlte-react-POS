@@ -1,16 +1,17 @@
-import customersService from './customers.service.js'
-import { success } from '../../utils/response.js'
+import * as DriverProductsService from './driverProducts.service.js'
+import { success } from '../../../utils/response.js'
 
 export const getAll = async (req, res, next) => {
   try {
-    const items = await customersService.getAll(req.query.all === 'true')
+    const includeInactive = req.query.all === 'true'
+    const items = await DriverProductsService.getAll(includeInactive)
     success(res, items)
   } catch (error) { next(error) }
 }
 
 export const getById = async (req, res, next) => {
   try {
-    const item = await customersService.getById(req.params.id)
+    const item = await DriverProductsService.getById(req.params.id)
     success(res, item)
   } catch (error) { next(error) }
 }
@@ -18,24 +19,24 @@ export const getById = async (req, res, next) => {
 export const create = async (req, res, next) => {
   try {
     const currentUserId = req.user?.userId || req.user?.user_id || null
-    const item = await customersService.create(req.body, currentUserId)
-    success(res, item, 'Customer created', 201)
+    const item = await DriverProductsService.create(req.body, currentUserId)
+    success(res, item, 'Product created', 201)
   } catch (error) { next(error) }
 }
 
 export const update = async (req, res, next) => {
   try {
     const currentUserId = req.user?.userId || req.user?.user_id || null
-    const item = await customersService.update(req.params.id, req.body, currentUserId)
-    success(res, item, 'Customer updated')
+    const item = await DriverProductsService.update(req.params.id, req.body, currentUserId)
+    success(res, item, 'Product updated')
   } catch (error) { next(error) }
 }
 
 export const remove = async (req, res, next) => {
   try {
     const currentUserId = req.user?.userId || req.user?.user_id || null
-    await customersService.remove(req.params.id, currentUserId)
-    success(res, null, 'Customer deleted')
+    await DriverProductsService.remove(req.params.id, currentUserId)
+    success(res, null, 'Product deactivated')
   } catch (error) { next(error) }
 }
 

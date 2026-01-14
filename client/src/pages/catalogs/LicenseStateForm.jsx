@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
 
-function PaymentMethodForm() {
+function LicenseStateForm() {
   const { id } = useParams()
   const navigate = useNavigate()
   const isEditing = id && id !== 'new'
@@ -11,13 +11,19 @@ function PaymentMethodForm() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [formData, setFormData] = useState({
-    code: '',
-    name: '',
-    is_cash: false,
-    allow_reference: true,
+    country_code: 'US',
+    state_code: '',
+    state_name: '',
     is_active: true
   })
   const [auditInfo, setAuditInfo] = useState(null)
+
+  // Países disponibles
+  const countries = [
+    { code: 'US', name: 'United States', flag: '🇺🇸' },
+    { code: 'MX', name: 'Mexico', flag: '🇲🇽' },
+    { code: 'CA', name: 'Canada', flag: '🇨🇦' }
+  ]
 
   useEffect(() => {
     if (isEditing) fetchItem()
@@ -26,13 +32,12 @@ function PaymentMethodForm() {
   const fetchItem = async () => {
     try {
       setLoading(true)
-      const response = await api.get(`/catalogs/payment-methods/${id}`)
+      const response = await api.get(`/catalogs/license-states/${id}`)
       const item = response.data.data
       setFormData({
-        code: item.code,
-        name: item.name,
-        is_cash: item.is_cash === 1,
-        allow_reference: item.allow_reference === 1,
+        country_code: item.country_code,
+        state_code: item.state_code,
+        state_name: item.state_name,
         is_active: item.is_active === 1
       })
       setAuditInfo({
@@ -42,8 +47,8 @@ function PaymentMethodForm() {
         edited_by_username: item.edited_by_username
       })
     } catch (error) {
-      Swal.fire('Error', 'Could not load payment method', 'error')
-      navigate('/catalogs/payment-methods')
+      Swal.fire('Error', 'Could not load state', 'error')
+      navigate('/catalogs/license-states')
     } finally { setLoading(false) }
   }
 
@@ -58,8 +63,13 @@ function PaymentMethodForm() {
   const handleSubmit = async (e) => {
     e.preventDefault()
 
-    if (!formData.code.trim() || !formData.name.trim()) {
-      Swal.fire('Validation', 'Code and name are required', 'warning')
+    if (!formData.country_code.trim() || !formData.state_code.trim() || !formData.state_name.trim()) {
+      Swal.fire('Validation', 'All fields are required', 'warning')
+      return
+    }
+
+    if (formData.state_code.length > 10) {
+      Swal.fire('Validation', 'State code must be 10 characters or less', 'warning')
       return
     }
 
@@ -67,9 +77,9 @@ function PaymentMethodForm() {
       setSaving(true)
 
       if (isEditing) {
-        await api.put(`/catalogs/payment-methods/${id}`, formData)
+        await api.put(`/catalogs/license-states/${id}`, formData)
       } else {
-        await api.post('/catalogs/payment-methods', formData)
+        await api.post('/catalogs/license-states', formData)
       }
 
       Swal.fire({
@@ -80,7 +90,7 @@ function PaymentMethodForm() {
         showConfirmButton: false,
         timer: 2000
       })
-      navigate('/catalogs/payment-methods')
+      navigate('/catalogs/license-states')
     } catch (error) {
       Swal.fire('Error', error.response?.data?.message || 'Could not save', 'error')
     } finally { setSaving(false) }
@@ -111,14 +121,14 @@ function PaymentMethodForm() {
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
           <h3 className="mb-1">
-            <i className="bi bi-credit-card me-2"></i>
-            {isEditing ? 'Edit Payment Method' : 'New Payment Method'}
+            <i className="bi bi-geo-alt me-2"></i>
+            {isEditing ? 'Edit State' : 'New State'}
           </h3>
           <p className="text-muted mb-0">
-            {isEditing ? 'Update payment method information' : 'Add a new payment method'}
+            {isEditing ? 'Update state information' : 'Add a new state for driver licenses'}
           </p>
         </div>
-        <Link to="/catalogs/payment-methods" className="btn btn-outline-secondary">
+        <Link to="/catalogs/license-states" className="btn btn-outline-secondary">
           <i className="bi bi-arrow-left me-2"></i>Back to List
         </Link>
       </div>
@@ -128,78 +138,56 @@ function PaymentMethodForm() {
           <form onSubmit={handleSubmit}>
             <div className="card shadow-sm">
               <div className="card-header bg-light">
-                <h5 className="mb-0"><i className="bi bi-info-circle me-2"></i>Method Information</h5>
+                <h5 className="mb-0"><i className="bi bi-info-circle me-2"></i>State Information</h5>
               </div>
               <div className="card-body">
-                {/* Code */}
+                {/* Country */}
                 <div className="mb-3">
-                  <label className="form-label">Code <span className="text-danger">*</span></label>
+                  <label className="form-label">Country <span className="text-danger">*</span></label>
+                  <select
+                    className="form-select form-select-lg"
+                    name="country_code"
+                    value={formData.country_code}
+                    onChange={handleChange}
+                    required
+                  >
+                    {countries.map(c => (
+                      <option key={c.code} value={c.code}>
+                        {c.flag} {c.name} ({c.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* State Code */}
+                <div className="mb-3">
+                  <label className="form-label">State Code <span className="text-danger">*</span></label>
                   <input
                     type="text"
                     className="form-control form-control-lg"
-                    name="code"
-                    value={formData.code}
+                    name="state_code"
+                    value={formData.state_code}
                     onChange={handleChange}
-                    placeholder="e.g., cash, card, check"
-                    maxLength={50}
-                    style={{ textTransform: 'lowercase' }}
+                    placeholder="e.g., TX, NM, AZ"
+                    maxLength={10}
+                    style={{ textTransform: 'uppercase' }}
                     required
                   />
-                  <div className="form-text">Unique identifier code (lowercase)</div>
+                  <div className="form-text">Short code (2-3 characters recommended)</div>
                 </div>
 
-                {/* Name */}
+                {/* State Name */}
                 <div className="mb-3">
-                  <label className="form-label">Name <span className="text-danger">*</span></label>
+                  <label className="form-label">State Name <span className="text-danger">*</span></label>
                   <input
                     type="text"
                     className="form-control form-control-lg"
-                    name="name"
-                    value={formData.name}
+                    name="state_name"
+                    value={formData.state_name}
                     onChange={handleChange}
-                    placeholder="e.g., Cash, Credit Card, Business Account"
+                    placeholder="e.g., Texas, New Mexico"
                     required
                   />
-                </div>
-
-                {/* Options */}
-                <div className="row mb-3">
-                  <div className="col-6">
-                    <div className="form-check form-switch">
-                      <input
-                        className="form-check-input"
-                        type="checkbox"
-                        name="is_cash"
-                        id="is_cash"
-                        checked={formData.is_cash}
-                        onChange={handleChange}
-                        style={{ width: '2.5em', height: '1.25em' }}
-                      />
-                      <label className="form-check-label ms-2" htmlFor="is_cash">
-                        <i className="bi bi-cash-stack me-1 text-success"></i>
-                        Is Cash Payment
-                      </label>
-                    </div>
-                    <div className="form-text">Mark if this is a cash-based payment</div>
-                  </div>
-                  <div className="col-6">
-                    <div className="form-check form-switch">
-                      <input
-                        className="form-check-input"
-                        type="checkbox"
-                        name="allow_reference"
-                        id="allow_reference"
-                        checked={formData.allow_reference}
-                        onChange={handleChange}
-                        style={{ width: '2.5em', height: '1.25em' }}
-                      />
-                      <label className="form-check-label ms-2" htmlFor="allow_reference">
-                        <i className="bi bi-hash me-1 text-info"></i>
-                        Allow Reference
-                      </label>
-                    </div>
-                    <div className="form-text">Allow reference number input</div>
-                  </div>
                 </div>
 
                 {/* Active Toggle */}
@@ -244,7 +232,7 @@ function PaymentMethodForm() {
                       </>
                     )}
                   </button>
-                  <Link to="/catalogs/payment-methods" className="btn btn-outline-secondary">
+                  <Link to="/catalogs/license-states" className="btn btn-outline-secondary">
                     Cancel
                   </Link>
                 </div>
@@ -261,32 +249,23 @@ function PaymentMethodForm() {
               <h5 className="mb-0"><i className="bi bi-eye me-2"></i>Preview</h5>
             </div>
             <div className="card-body text-center py-4">
-              <div className="display-4 mb-3">
-                <i className={`bi ${formData.is_cash ? 'bi-cash-stack text-success' : 'bi-credit-card text-primary'}`}></i>
+              <div className="display-1 mb-3">
+                {countries.find(c => c.code === formData.country_code)?.flag || '🏳️'}
               </div>
               <h2 className="mb-2">
-                <span className="badge bg-primary fs-4">
-                  {formData.code || '???'}
+                <span className="badge bg-primary fs-3">
+                  {formData.state_code || '??'}
                 </span>
               </h2>
               <h4 className="text-muted">
-                {formData.name || 'Method Name'}
+                {formData.state_name || 'State Name'}
               </h4>
-              <div className="mt-3">
-                {formData.is_cash && (
-                  <span className="badge bg-success me-2">
-                    <i className="bi bi-cash-stack me-1"></i>Cash
-                  </span>
-                )}
-                {formData.allow_reference && (
-                  <span className="badge bg-info me-2">
-                    <i className="bi bi-hash me-1"></i>Allows Reference
-                  </span>
-                )}
-                {!formData.is_active && (
-                  <span className="badge bg-secondary">Inactive</span>
-                )}
-              </div>
+              <p className="text-muted mb-0">
+                {countries.find(c => c.code === formData.country_code)?.name || 'Country'}
+              </p>
+              {!formData.is_active && (
+                <span className="badge bg-secondary mt-3">Inactive</span>
+              )}
             </div>
           </div>
 
@@ -322,4 +301,4 @@ function PaymentMethodForm() {
   )
 }
 
-export default PaymentMethodForm
+export default LicenseStateForm

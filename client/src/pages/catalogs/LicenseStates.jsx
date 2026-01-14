@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
 
-function PaymentMethods() {
+function LicenseStates() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [filterCountry, setFilterCountry] = useState('')
   const [showInactive, setShowInactive] = useState(true)
 
   useEffect(() => { fetchData() }, [showInactive])
@@ -14,10 +15,10 @@ function PaymentMethods() {
   const fetchData = async () => {
     try {
       setLoading(true)
-      const response = await api.get(`/catalogs/payment-methods?all=${showInactive}`)
+      const response = await api.get(`/catalogs/license-states?all=${showInactive}`)
       setItems(response.data.data)
     } catch (error) {
-      Swal.fire('Error', 'Could not load payment methods', 'error')
+      Swal.fire('Error', 'Could not load states', 'error')
     } finally { setLoading(false) }
   }
 
@@ -25,7 +26,7 @@ function PaymentMethods() {
     const action = item.is_active ? 'deactivate' : 'activate'
     const result = await Swal.fire({
       title: `${item.is_active ? 'Deactivate' : 'Activate'}?`,
-      html: `${action === 'deactivate' ? 'Deactivate' : 'Activate'} <b>${item.name}</b>?`,
+      html: `${action === 'deactivate' ? 'Deactivate' : 'Activate'} <b>${item.state_name} (${item.state_code})</b>?`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: item.is_active ? '#dc3545' : '#28a745',
@@ -34,9 +35,9 @@ function PaymentMethods() {
     if (result.isConfirmed) {
       try {
         if (item.is_active) {
-          await api.delete(`/catalogs/payment-methods/${item.method_id}`)
+          await api.delete(`/catalogs/license-states/${item.id_state}`)
         } else {
-          await api.put(`/catalogs/payment-methods/${item.method_id}`, { is_active: true })
+          await api.put(`/catalogs/license-states/${item.id_state}`, { is_active: true })
         }
         Swal.fire({
           icon: 'success',
@@ -53,10 +54,26 @@ function PaymentMethods() {
     }
   }
 
-  const filtered = items.filter(i =>
-    i.name?.toLowerCase().includes(search.toLowerCase()) ||
-    i.code?.toLowerCase().includes(search.toLowerCase())
-  )
+  // Obtener países únicos para filtro
+  const countries = [...new Set(items.map(i => i.country_code))].sort()
+
+  const filtered = items.filter(i => {
+    const matchesSearch =
+      i.state_name?.toLowerCase().includes(search.toLowerCase()) ||
+      i.state_code?.toLowerCase().includes(search.toLowerCase())
+    const matchesCountry = !filterCountry || i.country_code === filterCountry
+    return matchesSearch && matchesCountry
+  })
+
+  const getCountryName = (code) => {
+    const names = { 'US': 'United States', 'MX': 'Mexico', 'CA': 'Canada' }
+    return names[code] || code
+  }
+
+  const getCountryFlag = (code) => {
+    const flags = { 'US': '🇺🇸', 'MX': '🇲🇽', 'CA': '🇨🇦' }
+    return flags[code] || '🏳️'
+  }
 
   const formatDate = (dateString) => {
     if (!dateString) return '-'
@@ -72,11 +89,11 @@ function PaymentMethods() {
       {/* Header */}
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h3 className="mb-1"><i className="bi bi-credit-card me-2"></i>Payment Methods</h3>
-          <p className="text-muted mb-0">Manage payment methods (Cash, Card, Business Account)</p>
+          <h3 className="mb-1"><i className="bi bi-geo-alt me-2"></i>License States</h3>
+          <p className="text-muted mb-0">Manage states for driver licenses</p>
         </div>
-        <Link to="/catalogs/payment-methods/new" className="btn btn-primary">
-          <i className="bi bi-plus-lg me-2"></i>New Method
+        <Link to="/catalogs/license-states/new" className="btn btn-primary">
+          <i className="bi bi-plus-lg me-2"></i>New State
         </Link>
       </div>
 
@@ -84,7 +101,7 @@ function PaymentMethods() {
       <div className="card shadow-sm mb-4">
         <div className="card-body py-2">
           <div className="row g-2 align-items-center">
-            <div className="col-md-6">
+            <div className="col-md-4">
               <div className="input-group">
                 <span className="input-group-text"><i className="bi bi-search"></i></span>
                 <input
@@ -102,6 +119,18 @@ function PaymentMethods() {
               </div>
             </div>
             <div className="col-md-3">
+              <select
+                className="form-select"
+                value={filterCountry}
+                onChange={(e) => setFilterCountry(e.target.value)}
+              >
+                <option value="">All Countries</option>
+                {countries.map(c => (
+                  <option key={c} value={c}>{getCountryFlag(c)} {getCountryName(c)}</option>
+                ))}
+              </select>
+            </div>
+            <div className="col-md-3">
               <div className="form-check form-switch">
                 <input
                   className="form-check-input"
@@ -115,14 +144,14 @@ function PaymentMethods() {
                 </label>
               </div>
             </div>
-            <div className="col-md-3 text-end">
-              <span className="text-muted">{filtered.length} method(s)</span>
+            <div className="col-md-2 text-end">
+              <span className="text-muted">{filtered.length} state(s)</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Table */}
+      {/* Content */}
       {loading ? (
         <div className="text-center py-5">
           <div className="spinner-border text-primary"></div>
@@ -134,10 +163,9 @@ function PaymentMethods() {
               <table className="table table-hover mb-0">
                 <thead className="table-light">
                   <tr>
-                    <th style={{ width: '120px' }}>Code</th>
-                    <th>Name</th>
-                    <th className="text-center" style={{ width: '100px' }}>Is Cash</th>
-                    <th className="text-center" style={{ width: '120px' }}>Allow Ref.</th>
+                    <th style={{ width: '100px' }}>Country</th>
+                    <th style={{ width: '100px' }}>Code</th>
+                    <th>State Name</th>
                     <th className="text-center" style={{ width: '100px' }}>Status</th>
                     <th style={{ width: '150px' }}>Created</th>
                     <th style={{ width: '150px' }}>Modified</th>
@@ -147,35 +175,25 @@ function PaymentMethods() {
                 <tbody>
                   {filtered.length === 0 ? (
                     <tr>
-                      <td colSpan="8" className="text-center py-4 text-muted">
+                      <td colSpan="7" className="text-center py-4 text-muted">
                         <i className="bi bi-inbox fs-1 d-block mb-2"></i>
-                        No payment methods found
+                        No states found
                       </td>
                     </tr>
                   ) : filtered.map(item => (
-                    <tr key={item.method_id} className={!item.is_active ? 'table-secondary' : ''}>
+                    <tr key={item.id_state} className={!item.is_active ? 'table-secondary' : ''}>
+                      <td>
+                        <span className="me-1">{getCountryFlag(item.country_code)}</span>
+                        <code className="bg-light px-1 rounded">{item.country_code}</code>
+                      </td>
                       <td>
                         <code className="bg-primary text-white px-2 py-1 rounded fw-bold">
-                          {item.code}
+                          {item.state_code}
                         </code>
                       </td>
                       <td>
-                        <i className={`bi ${item.is_cash ? 'bi-cash-stack text-success' : 'bi-credit-card text-primary'} me-2`}></i>
-                        {item.name}
-                      </td>
-                      <td className="text-center">
-                        {item.is_cash ? (
-                          <span className="badge bg-success"><i className="bi bi-check"></i></span>
-                        ) : (
-                          <span className="badge bg-secondary"><i className="bi bi-x"></i></span>
-                        )}
-                      </td>
-                      <td className="text-center">
-                        {item.allow_reference ? (
-                          <span className="badge bg-info"><i className="bi bi-check"></i> Yes</span>
-                        ) : (
-                          <span className="badge bg-secondary"><i className="bi bi-x"></i> No</span>
-                        )}
+                        <i className="bi bi-geo-alt me-2 text-primary"></i>
+                        {item.state_name}
                       </td>
                       <td className="text-center">
                         {item.is_active ? (
@@ -199,7 +217,7 @@ function PaymentMethods() {
                       <td className="text-center">
                         <div className="btn-group btn-group-sm">
                           <Link
-                            to={`/catalogs/payment-methods/${item.method_id}`}
+                            to={`/catalogs/license-states/${item.id_state}`}
                             className="btn btn-outline-primary"
                             title="Edit"
                           >
@@ -226,4 +244,4 @@ function PaymentMethods() {
   )
 }
 
-export default PaymentMethods
+export default LicenseStates

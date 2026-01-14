@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
 
-function PaymentMethods() {
+function DriverProducts() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -14,10 +14,10 @@ function PaymentMethods() {
   const fetchData = async () => {
     try {
       setLoading(true)
-      const response = await api.get(`/catalogs/payment-methods?all=${showInactive}`)
+      const response = await api.get(`/catalogs/driver-products?all=${showInactive}`)
       setItems(response.data.data)
     } catch (error) {
-      Swal.fire('Error', 'Could not load payment methods', 'error')
+      Swal.fire('Error', 'Could not load products', 'error')
     } finally { setLoading(false) }
   }
 
@@ -34,17 +34,17 @@ function PaymentMethods() {
     if (result.isConfirmed) {
       try {
         if (item.is_active) {
-          await api.delete(`/catalogs/payment-methods/${item.method_id}`)
+          await api.delete(`/catalogs/driver-products/${item.product_id}`)
         } else {
-          await api.put(`/catalogs/payment-methods/${item.method_id}`, { is_active: true })
+          await api.put(`/catalogs/driver-products/${item.product_id}`, { is_active: true })
         }
-        Swal.fire({
-          icon: 'success',
-          title: item.is_active ? 'Deactivated!' : 'Activated!',
-          toast: true,
-          position: 'top-end',
-          showConfirmButton: false,
-          timer: 2000
+        Swal.fire({ 
+          icon: 'success', 
+          title: item.is_active ? 'Deactivated!' : 'Activated!', 
+          toast: true, 
+          position: 'top-end', 
+          showConfirmButton: false, 
+          timer: 2000 
         })
         fetchData()
       } catch (error) {
@@ -72,11 +72,11 @@ function PaymentMethods() {
       {/* Header */}
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h3 className="mb-1"><i className="bi bi-credit-card me-2"></i>Payment Methods</h3>
-          <p className="text-muted mb-0">Manage payment methods (Cash, Card, Business Account)</p>
+          <h3 className="mb-1"><i className="bi bi-box-seam me-2"></i>Driver Products</h3>
+          <p className="text-muted mb-0">Products transported by drivers (grains, materials, etc.)</p>
         </div>
-        <Link to="/catalogs/payment-methods/new" className="btn btn-primary">
-          <i className="bi bi-plus-lg me-2"></i>New Method
+        <Link to="/catalogs/driver-products/new" className="btn btn-primary">
+          <i className="bi bi-plus-lg me-2"></i>New Product
         </Link>
       </div>
 
@@ -116,7 +116,7 @@ function PaymentMethods() {
               </div>
             </div>
             <div className="col-md-3 text-end">
-              <span className="text-muted">{filtered.length} method(s)</span>
+              <span className="text-muted">{filtered.length} product(s)</span>
             </div>
           </div>
         </div>
@@ -136,8 +136,6 @@ function PaymentMethods() {
                   <tr>
                     <th style={{ width: '120px' }}>Code</th>
                     <th>Name</th>
-                    <th className="text-center" style={{ width: '100px' }}>Is Cash</th>
-                    <th className="text-center" style={{ width: '120px' }}>Allow Ref.</th>
                     <th className="text-center" style={{ width: '100px' }}>Status</th>
                     <th style={{ width: '150px' }}>Created</th>
                     <th style={{ width: '150px' }}>Modified</th>
@@ -147,35 +145,21 @@ function PaymentMethods() {
                 <tbody>
                   {filtered.length === 0 ? (
                     <tr>
-                      <td colSpan="8" className="text-center py-4 text-muted">
+                      <td colSpan="6" className="text-center py-4 text-muted">
                         <i className="bi bi-inbox fs-1 d-block mb-2"></i>
-                        No payment methods found
+                        No products found
                       </td>
                     </tr>
                   ) : filtered.map(item => (
-                    <tr key={item.method_id} className={!item.is_active ? 'table-secondary' : ''}>
+                    <tr key={item.product_id} className={!item.is_active ? 'table-secondary' : ''}>
                       <td>
                         <code className="bg-primary text-white px-2 py-1 rounded fw-bold">
                           {item.code}
                         </code>
                       </td>
                       <td>
-                        <i className={`bi ${item.is_cash ? 'bi-cash-stack text-success' : 'bi-credit-card text-primary'} me-2`}></i>
+                        <i className="bi bi-box-seam me-2 text-primary"></i>
                         {item.name}
-                      </td>
-                      <td className="text-center">
-                        {item.is_cash ? (
-                          <span className="badge bg-success"><i className="bi bi-check"></i></span>
-                        ) : (
-                          <span className="badge bg-secondary"><i className="bi bi-x"></i></span>
-                        )}
-                      </td>
-                      <td className="text-center">
-                        {item.allow_reference ? (
-                          <span className="badge bg-info"><i className="bi bi-check"></i> Yes</span>
-                        ) : (
-                          <span className="badge bg-secondary"><i className="bi bi-x"></i> No</span>
-                        )}
                       </td>
                       <td className="text-center">
                         {item.is_active ? (
@@ -199,7 +183,7 @@ function PaymentMethods() {
                       <td className="text-center">
                         <div className="btn-group btn-group-sm">
                           <Link
-                            to={`/catalogs/payment-methods/${item.method_id}`}
+                            to={`/catalogs/driver-products/${item.product_id}`}
                             className="btn btn-outline-primary"
                             title="Edit"
                           >
@@ -226,4 +210,4 @@ function PaymentMethods() {
   )
 }
 
-export default PaymentMethods
+export default DriverProducts

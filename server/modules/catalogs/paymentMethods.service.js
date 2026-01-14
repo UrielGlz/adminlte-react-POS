@@ -2,158 +2,146 @@ import { query } from '../../config/database.js'
 import { NotFoundError, ConflictError } from '../../utils/errors.js'
 
 /**
- * Obtener todos los métodos de pago
+ * Payment Methods Service
+ * Catálogo de métodos de pago (Cash, Card, Business Account)
  */
+
 export const getAll = async (includeInactive = false) => {
   let sql = `
-    SELECT method_id, code, name, is_cash, allow_reference, is_active, updated_at
-    FROM payment_methods
+    SELECT 
+      pm.method_id,
+      pm.code,
+      pm.name,
+      pm.is_cash,
+      pm.allow_reference,
+      pm.is_active,
+      pm.created_at,
+      pm.updated_at,
+      pm.created_by_user,
+      pm.edited_by_user,
+      creator.username AS created_by_username,
+      editor.username AS edited_by_username
+    FROM payment_methods pm
+    LEFT JOIN users creator ON pm.created_by_user = creator.user_id
+    LEFT JOIN users editor ON pm.edited_by_user = editor.user_id
   `
-  
-  if (!includeInactive) {
-    sql += ` WHERE is_active = 1`
-  }
-  
-  sql += ` ORDER BY name ASC`
+  if (!includeInactive) sql += ` WHERE pm.is_active = 1`
+  sql += ` ORDER BY pm.name ASC`
   
   return await query(sql)
 }
 
-/**
- * Obtener por ID
- */
-export const getById = async (methodId) => {
-  const items = await query(
-    `SELECT method_id, code, name, is_cash, allow_reference, is_active, updated_at
-     FROM payment_methods 
-     WHERE method_id = ?`,
-    [methodId]
-  )
-
-  if (items.length === 0) {
-    throw new NotFoundError('Payment method not found')
-  }
-
-  // Contar uso en payments
-  const usage = await query(
-    'SELECT COUNT(*) as count FROM payments WHERE method_id = ?',
-    [methodId]
-  )
-
-  const item = items[0]
-  item.usage_count = usage[0].count
-
-  return item
+export const getById = async (id) => {
+  const sql = `
+    SELECT 
+      pm.*,
+      creator.username AS created_by_username,
+      editor.username AS edited_by_username
+    FROM payment_methods pm
+    LEFT JOIN users creator ON pm.created_by_user = creator.user_id
+    LEFT JOIN users editor ON pm.edited_by_user = editor.user_id
+    WHERE pm.method_id = ?
+  `
+  const result = await query(sql, [id])
+  if (result.length === 0) throw new NotFoundError('Payment method not found')
+  return result[0]
 }
 
-/**
- * Crear nuevo método de pago
- */
-export const create = async (data) => {
-  const { code, name, is_cash = false, allow_reference = true, is_active = true } = data
+export const findByCode = async (code) => {
+  const sql = `SELECT * FROM payment_methods WHERE code = ?`
+  const result = await query(sql, [code])
+  return result[0] || null
+}
 
-  // Verificar código único
-  const existing = await query(
-    'SELECT method_id FROM payment_methods WHERE code = ?',
-    [code.toLowerCase()]
-  )
-
-  if (existing.length > 0) {
-    throw new ConflictError(`Payment method code "${code}" already exists`)
+export const create = async (data, currentUserId = null) => {
+  const { code, name, is_cash = 0, allow_reference = 1, is_active = 1 } = data
+  
+  if (!code || !name) {
+    throw new ConflictError('Code and name are required')
   }
-
-  const result = await query(
-    `INSERT INTO payment_methods (code, name, is_cash, allow_reference, is_active)
-     VALUES (?, ?, ?, ?, ?)`,
-    [
-      code.toLowerCase(),
-      name,
-      is_cash ? 1 : 0,
-      allow_reference ? 1 : 0,
-      is_active ? 1 : 0
-    ]
-  )
-
+  
+  // Verificar duplicado
+  const existing = await findByCode(code)
+  if (existing) {
+    throw new ConflictError(`Payment method with code "${code}" already exists`)
+  }
+  
+  const sql = `
+    INSERT INTO payment_methods (code, name, is_cash, allow_reference, is_active, created_by_user)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `
+  
+  const result = await query(sql, [
+    code.toLowerCase(),
+    name,
+    is_cash ? 1 : 0,
+    allow_reference ? 1 : 0,
+    is_active ? 1 : 0,
+    currentUserId
+  ])
+  
   return await getById(result.insertId)
 }
 
-/**
- * Actualizar método de pago
- */
-export const update = async (methodId, data) => {
-  const { code, name, is_cash, allow_reference, is_active } = data
-
-  // Verificar que existe
-  const existing = await query(
-    'SELECT method_id, code FROM payment_methods WHERE method_id = ?',
-    [methodId]
-  )
-
-  if (existing.length === 0) {
-    throw new NotFoundError('Payment method not found')
-  }
-
-  // Si cambia el código, verificar que no exista
-  if (code && code.toLowerCase() !== existing[0].code) {
-    const duplicate = await query(
-      'SELECT method_id FROM payment_methods WHERE code = ? AND method_id != ?',
-      [code.toLowerCase(), methodId]
-    )
-
-    if (duplicate.length > 0) {
-      throw new ConflictError(`Payment method code "${code}" already exists`)
+export const update = async (id, data, currentUserId = null) => {
+  const existing = await query('SELECT * FROM payment_methods WHERE method_id = ?', [id])
+  if (existing.length === 0) throw new NotFoundError('Payment method not found')
+  
+  // Si cambia code, verificar duplicado
+  if (data.code && data.code.toLowerCase() !== existing[0].code) {
+    const duplicate = await findByCode(data.code)
+    if (duplicate) {
+      throw new ConflictError(`Payment method with code "${data.code}" already exists`)
     }
   }
-
-  await query(
-    `UPDATE payment_methods 
-     SET code = ?, name = ?, is_cash = ?, allow_reference = ?, is_active = ?, updated_at = NOW()
-     WHERE method_id = ?`,
-    [
-      code ? code.toLowerCase() : existing[0].code,
-      name,
-      is_cash !== undefined ? (is_cash ? 1 : 0) : 0,
-      allow_reference !== undefined ? (allow_reference ? 1 : 0) : 1,
-      is_active !== undefined ? (is_active ? 1 : 0) : 1,
-      methodId
-    ]
-  )
-
-  return await getById(methodId)
+  
+  const fields = []
+  const params = []
+  
+  if (data.code !== undefined) {
+    fields.push('code = ?')
+    params.push(data.code.toLowerCase())
+  }
+  if (data.name !== undefined) {
+    fields.push('name = ?')
+    params.push(data.name)
+  }
+  if (data.is_cash !== undefined) {
+    fields.push('is_cash = ?')
+    params.push(data.is_cash ? 1 : 0)
+  }
+  if (data.allow_reference !== undefined) {
+    fields.push('allow_reference = ?')
+    params.push(data.allow_reference ? 1 : 0)
+  }
+  if (data.is_active !== undefined) {
+    fields.push('is_active = ?')
+    params.push(data.is_active ? 1 : 0)
+  }
+  
+  // Siempre actualizar edited_by_user
+  fields.push('edited_by_user = ?')
+  params.push(currentUserId)
+  
+  if (fields.length === 0) return await getById(id)
+  
+  params.push(id)
+  const sql = `UPDATE payment_methods SET ${fields.join(', ')} WHERE method_id = ?`
+  
+  await query(sql, params)
+  return await getById(id)
 }
 
 /**
- * Eliminar método de pago
+ * Soft delete - solo cambia is_active a 0
  */
-export const remove = async (methodId) => {
-  const existing = await query(
-    'SELECT method_id FROM payment_methods WHERE method_id = ?',
-    [methodId]
-  )
-
-  if (existing.length === 0) {
-    throw new NotFoundError('Payment method not found')
-  }
-
-  // Verificar uso
-  const usage = await query(
-    'SELECT COUNT(*) as count FROM payments WHERE method_id = ?',
-    [methodId]
-  )
-
-  if (usage[0].count > 0) {
-    throw new ConflictError(`Cannot delete. This payment method is used in ${usage[0].count} payment(s).`)
-  }
-
-  await query('DELETE FROM payment_methods WHERE method_id = ?', [methodId])
-
+export const remove = async (id, currentUserId = null) => {
+  const existing = await query('SELECT * FROM payment_methods WHERE method_id = ?', [id])
+  if (existing.length === 0) throw new NotFoundError('Payment method not found')
+  
+  const sql = `UPDATE payment_methods SET is_active = 0, edited_by_user = ? WHERE method_id = ?`
+  await query(sql, [currentUserId, id])
   return true
 }
 
-export default {
-  getAll,
-  getById,
-  create,
-  update,
-  remove,
-}
+export default { getAll, getById, create, update, remove }

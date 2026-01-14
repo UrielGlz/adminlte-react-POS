@@ -1,11 +1,59 @@
 import { query } from '../../config/database.js'
 import { NotFoundError, ConflictError } from '../../utils/errors.js'
 
+// =============================================
+// CONFIGURACIÓN DE PREFIJO PARA ACCOUNT NUMBER
+// Cambiar aquí si piden quitar o modificar el prefijo
+// =============================================
+const ACCOUNT_PREFIX = 'ACC-'  // Cambiar a '' si quieren sin prefijo
+const ACCOUNT_PAD_LENGTH = 1   // Cantidad de dígitos: 0001, 00001, etc.
+
+/**
+ * Genera el siguiente account_number automáticamente
+ * Formato: ACC-0001, ACC-0002, etc.
+ */
+const generateAccountNumber = async () => {
+  // Obtener el último número usado
+  const result = await query(`
+    SELECT account_number 
+    FROM customers 
+    WHERE account_number LIKE ?
+    ORDER BY id_customer DESC 
+    LIMIT 1
+  `, [`${ACCOUNT_PREFIX}%`])
+
+  let nextNumber = 1
+
+  if (result.length > 0) {
+    // Extraer el número del último account_number
+    const lastAccount = result[0].account_number
+    const numericPart = lastAccount.replace(ACCOUNT_PREFIX, '')
+    const parsed = parseInt(numericPart, 10)
+    if (!isNaN(parsed)) {
+      nextNumber = parsed + 1
+    }
+  }
+
+  // Formatear con padding: 1 -> "0001"
+  const paddedNumber = String(nextNumber).padStart(ACCOUNT_PAD_LENGTH, '0')
+  return `${ACCOUNT_PREFIX}${paddedNumber}`
+}
+
 export const getAll = async (includeInactive = false) => {
   let sql = `
-    SELECT c.*, cc.credit_type, cc.credit_limit, cc.current_balance, cc.available_credit, cc.is_suspended
+    SELECT 
+      c.*,
+      cc.credit_type,
+      cc.credit_limit,
+      cc.current_balance,
+      cc.available_credit,
+      cc.is_suspended,
+      creator.username AS created_by_username,
+      editor.username AS edited_by_username
     FROM customers c
     LEFT JOIN customer_credit cc ON c.id_customer = cc.customer_id
+    LEFT JOIN users creator ON c.created_by_user = creator.user_id
+    LEFT JOIN users editor ON c.edited_by_user = editor.user_id
   `
   if (!includeInactive) sql += ` WHERE c.is_active = 1`
   sql += ` ORDER BY c.account_name ASC`
@@ -14,11 +62,24 @@ export const getAll = async (includeInactive = false) => {
 
 export const getById = async (id) => {
   const items = await query(`
-    SELECT c.*, cc.credit_id, cc.credit_type, cc.credit_limit, cc.current_balance, 
-           cc.available_credit, cc.expiry_date, cc.is_suspended, cc.suspension_reason,
-           cc.last_payment_date, cc.payment_terms_days
+    SELECT 
+      c.*,
+      cc.credit_id,
+      cc.credit_type,
+      cc.credit_limit,
+      cc.current_balance,
+      cc.available_credit,
+      cc.expiry_date,
+      cc.is_suspended,
+      cc.suspension_reason,
+      cc.last_payment_date,
+      cc.payment_terms_days,
+      creator.username AS created_by_username,
+      editor.username AS edited_by_username
     FROM customers c
     LEFT JOIN customer_credit cc ON c.id_customer = cc.customer_id
+    LEFT JOIN users creator ON c.created_by_user = creator.user_id
+    LEFT JOIN users editor ON c.edited_by_user = editor.user_id
     WHERE c.id_customer = ?
   `, [id])
   
@@ -34,16 +95,27 @@ export const getById = async (id) => {
   return items[0]
 }
 
-export const create = async (data) => {
-  const { account_number, account_name, account_address, account_country, account_state, has_credit = false, is_active = true, credit } = data
+export const create = async (data, currentUserId = null) => {
+  const { 
+    account_name, 
+    account_address, 
+    city,
+    account_country, 
+    account_state, 
+    phone_number,
+    tax_id,
+    has_credit = false, 
+    is_active = true, 
+    credit 
+  } = data
 
-  const existing = await query('SELECT id_customer FROM customers WHERE account_number = ?', [account_number])
-  if (existing.length > 0) throw new ConflictError(`Account number "${account_number}" already exists`)
+  // Generar account_number automáticamente
+  const account_number = await generateAccountNumber()
 
   const result = await query(
-    `INSERT INTO customers (account_number, account_name, account_address, account_country, account_state, has_credit, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [account_number, account_name, account_address || null, account_country || null, account_state || null, has_credit ? 1 : 0, is_active ? 1 : 0]
+    `INSERT INTO customers (account_number, account_name, account_address, city, account_country, account_state, phone_number, tax_id, has_credit, is_active, created_by_user)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [account_number, account_name, account_address || null, city || null, account_country || null, account_state || null, phone_number || null, tax_id || null, has_credit ? 1 : 0, is_active ? 1 : 0, currentUserId]
   )
 
   const customerId = result.insertId
@@ -60,21 +132,41 @@ export const create = async (data) => {
   return await getById(customerId)
 }
 
-export const update = async (id, data) => {
-  const { account_number, account_name, account_address, account_country, account_state, has_credit, is_active, credit } = data
+export const update = async (id, data, currentUserId = null) => {
+  const { 
+    account_name, 
+    account_address, 
+    city,
+    account_country, 
+    account_state, 
+    phone_number,
+    tax_id,
+    has_credit, 
+    is_active, 
+    credit 
+  } = data
 
   const existing = await query('SELECT * FROM customers WHERE id_customer = ?', [id])
   if (existing.length === 0) throw new NotFoundError('Customer not found')
 
-  if (account_number && account_number !== existing[0].account_number) {
-    const dup = await query('SELECT id_customer FROM customers WHERE account_number = ? AND id_customer != ?', [account_number, id])
-    if (dup.length > 0) throw new ConflictError(`Account number "${account_number}" already exists`)
-  }
-
+  // account_number NO se actualiza, se mantiene el original
   await query(
-    `UPDATE customers SET account_number = ?, account_name = ?, account_address = ?, account_country = ?, account_state = ?, has_credit = ?, is_active = ?, updated_at = NOW()
+    `UPDATE customers 
+     SET account_name = ?, account_address = ?, city = ?, account_country = ?, account_state = ?, phone_number = ?, tax_id = ?, has_credit = ?, is_active = ?, edited_by_user = ?, updated_at = NOW()
      WHERE id_customer = ?`,
-    [account_number || existing[0].account_number, account_name, account_address || null, account_country || null, account_state || null, has_credit ? 1 : 0, is_active !== undefined ? (is_active ? 1 : 0) : 1, id]
+    [
+      account_name, 
+      account_address || null, 
+      city || null, 
+      account_country || null, 
+      account_state || null, 
+      phone_number || null, 
+      tax_id || null, 
+      has_credit ? 1 : 0, 
+      is_active !== undefined ? (is_active ? 1 : 0) : 1,
+      currentUserId,
+      id
+    ]
   )
 
   // Actualizar crédito
@@ -96,7 +188,7 @@ export const update = async (id, data) => {
   return await getById(id)
 }
 
-export const remove = async (id) => {
+export const remove = async (id, currentUserId = null) => {
   const existing = await query('SELECT account_number FROM customers WHERE id_customer = ?', [id])
   if (existing.length === 0) throw new NotFoundError('Customer not found')
 

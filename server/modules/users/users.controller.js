@@ -97,13 +97,16 @@ export const create = async (req, res, next) => {
   try {
     const data = req.body
 
-    // ✅ Requeridos para tu tabla + password en texto plano (solo entra aquí)
+    // ✅ Requeridos para tu tabla + password en texto plano
     if (!data.username || !data.full_name || !data.password) {
       return response.badRequest(res, 'username, full name y password required')
     }
 
-    const user = await UsersService.createUser(data)
-    logger.info(`✅ Usuario creado: ${user.username}`)
+    // NUEVO: obtener ID del usuario actual desde el token JWT
+    const currentUserId = req.user?.userId || req.user?.user_id || null
+
+    const user = await UsersService.createUser(data, currentUserId)
+    logger.info(`✅ Usuario creado: ${user.username} por user_id: ${currentUserId}`)
 
     return response.created(res, user, 'User created successfully')
   } catch (error) {
@@ -121,9 +124,12 @@ export const update = async (req, res, next) => {
     const { id } = req.params
     const data = req.body
     
-    const user = await UsersService.updateUser(id, data)
+    // 👇 NUEVO: obtener ID del usuario actual desde el token JWT
+    const currentUserId = req.user?.userId || req.user?.user_id || null
     
-    logger.info(`✏️ Usuario actualizado: ${user.email}`)
+    const user = await UsersService.updateUser(id, data, currentUserId)
+    
+    logger.info(`✏️ Usuario actualizado: ${user.email} por user_id: ${currentUserId}`)
     
     return response.success(res, user, 'User updated successfully')
   } catch (error) {

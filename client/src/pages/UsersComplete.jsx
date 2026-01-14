@@ -303,6 +303,9 @@ function UsersComplete() {
                       <th>Role</th>
                       <th>Status</th>
                       <th>Created</th>
+                      <th>Created</th>
+                      <th>Created By</th> 
+                      <th>Last Edit By</th>
                       <th style={{ width: '150px' }}>Actions</th>
                     </tr>
                   </thead>
@@ -354,6 +357,21 @@ function UsersComplete() {
                             )}
                           </td>
                           <td>{formatDate(user.created_at)}</td>
+                          <td>{formatDate(user.created_at)}</td>
+                          <td>
+                            {user.created_by_username ? (
+                              <span className="badge text-bg-light">{user.created_by_username}</span>
+                            ) : (
+                              <span className="text-muted">-</span>
+                            )}
+                          </td>
+                          <td>
+                            {user.edited_by_username ? (
+                              <span className="badge text-bg-light">{user.edited_by_username}</span>
+                            ) : (
+                              <span className="text-muted">-</span>
+                            )}
+                          </td>
                           <td>
                             <div className="btn-group">
                               <button

@@ -23,18 +23,25 @@ export const findAll = async (options = {}) => {
   const offset = (page - 1) * limit
   const params = []
 
-  let sql = `SELECT 
-    user_id,
-    username,
-    full_name,
-    email,
-    role_code,
-    is_active,
-    site_id,
-    last_login_at,
-    created_at,
-    updated_at
-  FROM users WHERE 1=1`
+    let sql = `SELECT 
+      u.user_id,
+      u.username,
+      u.full_name,
+      u.email,
+      u.role_code,
+      u.is_active,
+      u.site_id,
+      u.last_login_at,
+      u.created_at,
+      u.updated_at,
+      u.created_by_user,
+      u.edited_by_user,
+      creator.username AS created_by_username,
+      editor.username AS edited_by_username
+    FROM users u
+    LEFT JOIN users creator ON u.created_by_user = creator.user_id
+    LEFT JOIN users editor ON u.edited_by_user = editor.user_id
+    WHERE 1=1`
 
   // Filtro de búsqueda
   if (search) {
@@ -58,7 +65,7 @@ export const findAll = async (options = {}) => {
   const validOrderBy = ['user_id', 'username', 'full_name', 'email', 'created_at']
   const validOrder = ['ASC', 'DESC']
 
-  sql += ` ORDER BY ${validOrderBy.includes(orderBy) ? orderBy : 'user_id'} ${validOrder.includes(order.toUpperCase()) ? order.toUpperCase() : 'DESC'}`
+  sql += ` ORDER BY u.${validOrderBy.includes(orderBy) ? orderBy : 'user_id'} ${validOrder.includes(order.toUpperCase()) ? order.toUpperCase() : 'DESC'}`
 
   // Paginación
   sql += ` LIMIT ? OFFSET ?`
@@ -137,15 +144,16 @@ export const create = async (data) => {
     role_code = 'USER',
     is_active = 1,
     must_change_pw = 0,
-    site_id = 1
+    site_id = 1,
+    created_by_user = null
   } = data
 
-  const sql = `
-    INSERT INTO users (username, full_name, email, password_hash, password_algo, role_code, is_active, must_change_pw, site_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-  `
+   const sql = `
+    INSERT INTO users (username, full_name, email, password_hash, password_algo, role_code, is_active, must_change_pw, site_id, created_at, created_by_user)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)`
 
-  const result = await query(sql, [username, full_name, email, password_hash, password_algo, role_code, is_active, must_change_pw, site_id])
+
+  const result = await query(sql, [username, full_name, email, password_hash, password_algo, role_code, is_active, must_change_pw, site_id, created_by_user])
 
   return {
     user_id: result.insertId,
@@ -154,6 +162,7 @@ export const create = async (data) => {
     email,
     role_code,
     is_active,
+    created_by_user
   }
 }
 
@@ -196,7 +205,10 @@ export const update = async (id, data) => {
     fields.push('password_algo = ?')
     params.push(data.password_algo)
   }
-
+  if (data.edited_by_user !== undefined) {
+    fields.push('edited_by_user = ?')
+    params.push(data.edited_by_user)
+  }
 
   fields.push('updated_at = NOW()')
   params.push(id)

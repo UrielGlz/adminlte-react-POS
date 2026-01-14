@@ -45,7 +45,7 @@ export const getUserById = async (id) => {
 /**
  * Crear nuevo usuario
  */
-export const createUser = async (data) => {
+export const createUser = async (data,currentUserId = null) => {
   // unicidad
   if (data.username) {
     const existingUsername = await UsersModel.findByUsername(data.username)
@@ -65,20 +65,24 @@ export const createUser = async (data) => {
     password_hash,
     password_algo: 'bcrypt',
     must_change_pw: 1, // opcional: forzar cambio al primer login
+    created_by_user: currentUserId,
   }
   delete toCreate.password
 
   const newUser = await UsersModel.create(toCreate)
 
-  logger.info(`User created: ${newUser.username}`, { userId: newUser.user_id })
+  logger.info(`User created: ${newUser.username} by user_id: ${currentUserId}`, { userId: newUser.user_id })
   return newUser // ya viene sin hash en tu model.create()
 }
 
 
 /**
  * Actualizar usuario
+ * @param {number} id - ID del usuario a actualizar
+ * @param {Object} data - Datos a actualizar
+ * @param {number|null} currentUserId - ID del usuario que está editando (de req.user)
  */
-export const updateUser = async (id, data) => {
+export const updateUser = async (id, data, currentUserId = null) => {
   // Verificar que existe
   const existingUser = await UsersModel.findById(id)
   if (!existingUser) {
@@ -100,6 +104,7 @@ export const updateUser = async (id, data) => {
       throw new ConflictError('Email already in use')
     }
   }
+  
   if (data.password && data.password.length >= 6) {
     data.password_hash = await bcrypt.hash(data.password, 12)
     data.password_algo = 'bcrypt'
@@ -107,16 +112,19 @@ export const updateUser = async (id, data) => {
     delete data.password
   }
 
+  // 👇 NUEVO: agregar edited_by_user
+  data.edited_by_user = currentUserId
 
   const updatedUser = await UsersModel.update(id, data)
 
   // Remover password
   const { password_hash, password_algo, ...userWithoutPassword } = updatedUser
 
-  logger.info(`User updated: ${updatedUser.username}`, { userId: id })
+  logger.info(`User updated: ${updatedUser.username} by user_id: ${currentUserId}`, { userId: id })
 
   return userWithoutPassword
 }
+
 
 /**
  * Eliminar usuario

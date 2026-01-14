@@ -21,6 +21,10 @@ import productsRoutes from './modules/catalogs/products.routes.js'
 import vehicleTypesRoutes from './modules/catalogs/vehicleTypes.routes.js'
 import customersRoutes from './modules/customers/customers.routes.js'
 import salesRoutes from './modules/sales/sales.routes.js'
+import dashboardRoutes from './modules/dashboard/dashboard.routes.js'
+import licenseStatesRoutes from './modules/catalogs/licenseStates/licenseStates.routes.js'
+import driverProductsRoutes from './modules/catalogs/driverProducts/driverProducts.routes.js'
+import saleDriverInfoRoutes from './modules/catalogs/saleDriverInfo/saleDriverInfo.routes.js'
 
 const app = express()
 
@@ -54,8 +58,10 @@ app.get('/api/health', (req, res) => {
 })
 
 // ============ RUTAS DE MÓDULOS ============
+
 app.use('/api/auth', authRoutes)
 app.use('/api/navigation', navigationRoutes)
+app.use('/api/dashboard', dashboardRoutes)
 app.use('/api/users', usersRoutes)
 app.use('/api/stats', statsRoutes)
 app.use('/api/roles', rolesRoutes)
@@ -64,6 +70,10 @@ app.use('/api/catalogs/status', statusCatalogRoutes)
 app.use('/api/catalogs/payment-methods', paymentMethodsRoutes)
 app.use('/api/catalogs/products', productsRoutes)
 app.use('/api/catalogs/vehicle-types', vehicleTypesRoutes)
+app.use('/api/catalogs/license-states', licenseStatesRoutes)
+app.use('/api/catalogs/driver-products', driverProductsRoutes)
+app.use('/api/catalogs/sale-driver-info', saleDriverInfoRoutes)
+
 app.use('/api/customers', customersRoutes)
 app.use('/api/sales', salesRoutes)
 

@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import * as UsersController from './users.controller.js'
-// import { authenticate, authorize } from '../../middleware/auth.js'
+import { authenticate, requirePermission } from '../../middleware/auth.js'
 
 const router = Router()
 
@@ -9,17 +9,12 @@ const router = Router()
  * Base: /api/users
  */
 
-// Rutas públicas (o protegerlas con middleware)
-router.get('/', UsersController.getAll)
-router.get('/stats', UsersController.getStats)
-router.get('/:id', UsersController.getById)
-router.post('/', UsersController.create)
-router.put('/:id', UsersController.update)
-router.delete('/:id', UsersController.remove)
-
-// Ejemplo de rutas protegidas (descomentar cuando implementes auth)
-// router.get('/', authenticate, UsersController.getAll)
-// router.post('/', authenticate, authorize('admin'), UsersController.create)
-// router.delete('/:id', authenticate, authorize('admin'), UsersController.remove)
+// 👇 Todas las rutas protegidas para que req.user esté disponible
+router.get('/', authenticate, UsersController.getAll)
+router.get('/stats', authenticate, UsersController.getStats)
+router.get('/:id', authenticate, UsersController.getById)
+router.post('/', authenticate, requirePermission('users.write'), UsersController.create)
+router.put('/:id', authenticate, requirePermission('users.write'), UsersController.update)
+router.delete('/:id', authenticate, requirePermission('users.delete'), UsersController.remove)
 
 export default router

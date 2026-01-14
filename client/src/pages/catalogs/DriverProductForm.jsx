@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
 
-function PaymentMethodForm() {
+function DriverProductForm() {
   const { id } = useParams()
   const navigate = useNavigate()
   const isEditing = id && id !== 'new'
@@ -13,8 +13,6 @@ function PaymentMethodForm() {
   const [formData, setFormData] = useState({
     code: '',
     name: '',
-    is_cash: false,
-    allow_reference: true,
     is_active: true
   })
   const [auditInfo, setAuditInfo] = useState(null)
@@ -26,13 +24,11 @@ function PaymentMethodForm() {
   const fetchItem = async () => {
     try {
       setLoading(true)
-      const response = await api.get(`/catalogs/payment-methods/${id}`)
+      const response = await api.get(`/catalogs/driver-products/${id}`)
       const item = response.data.data
       setFormData({
         code: item.code,
         name: item.name,
-        is_cash: item.is_cash === 1,
-        allow_reference: item.allow_reference === 1,
         is_active: item.is_active === 1
       })
       setAuditInfo({
@@ -42,8 +38,8 @@ function PaymentMethodForm() {
         edited_by_username: item.edited_by_username
       })
     } catch (error) {
-      Swal.fire('Error', 'Could not load payment method', 'error')
-      navigate('/catalogs/payment-methods')
+      Swal.fire('Error', 'Could not load product', 'error')
+      navigate('/catalogs/driver-products')
     } finally { setLoading(false) }
   }
 
@@ -67,9 +63,9 @@ function PaymentMethodForm() {
       setSaving(true)
 
       if (isEditing) {
-        await api.put(`/catalogs/payment-methods/${id}`, formData)
+        await api.put(`/catalogs/driver-products/${id}`, formData)
       } else {
-        await api.post('/catalogs/payment-methods', formData)
+        await api.post('/catalogs/driver-products', formData)
       }
 
       Swal.fire({
@@ -80,7 +76,7 @@ function PaymentMethodForm() {
         showConfirmButton: false,
         timer: 2000
       })
-      navigate('/catalogs/payment-methods')
+      navigate('/catalogs/driver-products')
     } catch (error) {
       Swal.fire('Error', error.response?.data?.message || 'Could not save', 'error')
     } finally { setSaving(false) }
@@ -111,14 +107,14 @@ function PaymentMethodForm() {
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
           <h3 className="mb-1">
-            <i className="bi bi-credit-card me-2"></i>
-            {isEditing ? 'Edit Payment Method' : 'New Payment Method'}
+            <i className="bi bi-box-seam me-2"></i>
+            {isEditing ? 'Edit Product' : 'New Product'}
           </h3>
           <p className="text-muted mb-0">
-            {isEditing ? 'Update payment method information' : 'Add a new payment method'}
+            {isEditing ? 'Update product information' : 'Add a new driver product'}
           </p>
         </div>
-        <Link to="/catalogs/payment-methods" className="btn btn-outline-secondary">
+        <Link to="/catalogs/driver-products" className="btn btn-outline-secondary">
           <i className="bi bi-arrow-left me-2"></i>Back to List
         </Link>
       </div>
@@ -128,7 +124,7 @@ function PaymentMethodForm() {
           <form onSubmit={handleSubmit}>
             <div className="card shadow-sm">
               <div className="card-header bg-light">
-                <h5 className="mb-0"><i className="bi bi-info-circle me-2"></i>Method Information</h5>
+                <h5 className="mb-0"><i className="bi bi-info-circle me-2"></i>Product Information</h5>
               </div>
               <div className="card-body">
                 {/* Code */}
@@ -140,12 +136,12 @@ function PaymentMethodForm() {
                     name="code"
                     value={formData.code}
                     onChange={handleChange}
-                    placeholder="e.g., cash, card, check"
-                    maxLength={50}
-                    style={{ textTransform: 'lowercase' }}
+                    placeholder="e.g., CORN_Y, WHEAT, SCRAP"
+                    maxLength={32}
+                    style={{ textTransform: 'uppercase' }}
                     required
                   />
-                  <div className="form-text">Unique identifier code (lowercase)</div>
+                  <div className="form-text">Unique identifier code (uppercase)</div>
                 </div>
 
                 {/* Name */}
@@ -157,49 +153,9 @@ function PaymentMethodForm() {
                     name="name"
                     value={formData.name}
                     onChange={handleChange}
-                    placeholder="e.g., Cash, Credit Card, Business Account"
+                    placeholder="e.g., Yellow Corn, Wheat, Steel Scrap"
                     required
                   />
-                </div>
-
-                {/* Options */}
-                <div className="row mb-3">
-                  <div className="col-6">
-                    <div className="form-check form-switch">
-                      <input
-                        className="form-check-input"
-                        type="checkbox"
-                        name="is_cash"
-                        id="is_cash"
-                        checked={formData.is_cash}
-                        onChange={handleChange}
-                        style={{ width: '2.5em', height: '1.25em' }}
-                      />
-                      <label className="form-check-label ms-2" htmlFor="is_cash">
-                        <i className="bi bi-cash-stack me-1 text-success"></i>
-                        Is Cash Payment
-                      </label>
-                    </div>
-                    <div className="form-text">Mark if this is a cash-based payment</div>
-                  </div>
-                  <div className="col-6">
-                    <div className="form-check form-switch">
-                      <input
-                        className="form-check-input"
-                        type="checkbox"
-                        name="allow_reference"
-                        id="allow_reference"
-                        checked={formData.allow_reference}
-                        onChange={handleChange}
-                        style={{ width: '2.5em', height: '1.25em' }}
-                      />
-                      <label className="form-check-label ms-2" htmlFor="allow_reference">
-                        <i className="bi bi-hash me-1 text-info"></i>
-                        Allow Reference
-                      </label>
-                    </div>
-                    <div className="form-text">Allow reference number input</div>
-                  </div>
                 </div>
 
                 {/* Active Toggle */}
@@ -244,7 +200,7 @@ function PaymentMethodForm() {
                       </>
                     )}
                   </button>
-                  <Link to="/catalogs/payment-methods" className="btn btn-outline-secondary">
+                  <Link to="/catalogs/driver-products" className="btn btn-outline-secondary">
                     Cancel
                   </Link>
                 </div>
@@ -262,7 +218,7 @@ function PaymentMethodForm() {
             </div>
             <div className="card-body text-center py-4">
               <div className="display-4 mb-3">
-                <i className={`bi ${formData.is_cash ? 'bi-cash-stack text-success' : 'bi-credit-card text-primary'}`}></i>
+                <i className="bi bi-box-seam text-primary"></i>
               </div>
               <h2 className="mb-2">
                 <span className="badge bg-primary fs-4">
@@ -270,23 +226,11 @@ function PaymentMethodForm() {
                 </span>
               </h2>
               <h4 className="text-muted">
-                {formData.name || 'Method Name'}
+                {formData.name || 'Product Name'}
               </h4>
-              <div className="mt-3">
-                {formData.is_cash && (
-                  <span className="badge bg-success me-2">
-                    <i className="bi bi-cash-stack me-1"></i>Cash
-                  </span>
-                )}
-                {formData.allow_reference && (
-                  <span className="badge bg-info me-2">
-                    <i className="bi bi-hash me-1"></i>Allows Reference
-                  </span>
-                )}
-                {!formData.is_active && (
-                  <span className="badge bg-secondary">Inactive</span>
-                )}
-              </div>
+              {!formData.is_active && (
+                <span className="badge bg-secondary mt-2">Inactive</span>
+              )}
             </div>
           </div>
 
@@ -322,4 +266,4 @@ function PaymentMethodForm() {
   )
 }
 
-export default PaymentMethodForm
+export default DriverProductForm

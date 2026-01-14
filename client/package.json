@@ -36,6 +36,7 @@
     "react-chartjs-2": "^5.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.0",
+    "recharts": "^3.6.0",
     "sortablejs": "^1.15.2",
     "sweetalert2": "^11.26.17"
   },

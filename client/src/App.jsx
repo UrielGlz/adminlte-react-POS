@@ -25,6 +25,11 @@ import Customers from './pages/customers/Customers'
 import CustomerForm from './pages/customers/CustomerForm'
 import Sales from './pages/sales/Sales'
 import SaleDetail from './pages/sales/SaleDetail'
+import LicenseStates from './pages/catalogs/LicenseStates'
+import LicenseStateForm from './pages/catalogs/LicenseStateForm'
+import DriverProducts from './pages/catalogs/DriverProducts'
+import DriverProductForm from './pages/catalogs/DriverProductForm'
+import SaleDriverInfo from './pages/catalogs/SaleDriverInfo'
 
 
 function App() {
@@ -79,6 +84,13 @@ function App() {
           <Route path="catalogs/vehicle-types" element={<VehicleTypes />} />
           <Route path="catalogs/vehicle-types/new" element={<VehicleTypeForm />} />
           <Route path="catalogs/vehicle-types/:id" element={<VehicleTypeForm />} />
+          <Route path="/catalogs/license-states" element={<LicenseStates />} />
+          <Route path="/catalogs/license-states/new" element={<LicenseStateForm />} />
+          <Route path="/catalogs/license-states/:id" element={<LicenseStateForm />} />
+          <Route path="/catalogs/driver-products" element={<DriverProducts />} />
+          <Route path="/catalogs/driver-products/new" element={<DriverProductForm />} />
+          <Route path="/catalogs/driver-products/:id" element={<DriverProductForm />} />
+          <Route path="/catalogs/sale-driver-info" element={<SaleDriverInfo />} />
 
           <Route path="customers" element={<Customers />} />
           <Route path="customers/new" element={<CustomerForm />} />

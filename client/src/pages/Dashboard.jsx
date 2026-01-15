@@ -23,6 +23,7 @@ function Dashboard() {
     try {
       setLoading(true)
       const response = await api.get('/dashboard')
+      
       setData(response.data.data)
     } catch (error) {
       console.error('Error loading dashboard:', error)

@@ -30,7 +30,12 @@ import LicenseStateForm from './pages/catalogs/LicenseStateForm'
 import DriverProducts from './pages/catalogs/DriverProducts'
 import DriverProductForm from './pages/catalogs/DriverProductForm'
 import SaleDriverInfo from './pages/catalogs/SaleDriverInfo'
-
+import ReportsIndex from './pages/reports/ReportsIndex'
+import CustomersReport from './pages/reports/CustomersReport'
+import SalesReport from './pages/reports/SalesReport'
+import CustomerStatement from './pages/reports/CustomerStatement'
+import PosSettings from './pages/settings/PosSettings'
+import CashSales from './pages/reports/CashSales'
 
 function App() {
   return (
@@ -66,11 +71,6 @@ function App() {
           <Route path="settings/permissions" element={<Permissions />} />
           <Route path="settings/permissions/new" element={<PermissionForm />} />
           <Route path="settings/permissions/:id" element={<PermissionForm />} />
-
-
-          <Route path="reports/sales" element={<div className="p-4">Sales - Coming soon</div>} />
-          <Route path="reports/accounting" element={<div className="p-4">Accounting - Coming soon</div>} />
-
           <Route path="catalogs/status" element={<StatusCatalog />} />
           <Route path="catalogs/status/new" element={<StatusCatalogForm />} />
           <Route path="catalogs/status/:id" element={<StatusCatalogForm />} />
@@ -98,6 +98,14 @@ function App() {
 
           <Route path="sales" element={<Sales />} />
           <Route path="sales/:id" element={<SaleDetail />} />
+
+          <Route path="/reports" element={<ReportsIndex />} />
+          <Route path="/reports/customers" element={<CustomersReport />} />
+          <Route path="/reports/sales" element={<SalesReport />} />
+          <Route path="/reports/customer-statement" element={<CustomerStatement />} />
+          <Route path="/reports/cash-sales" element={<CashSales />} />
+
+          <Route path="/settings/pos" element={<PosSettings />} />
 
 
         </Route>

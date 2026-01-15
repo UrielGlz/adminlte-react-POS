@@ -25,6 +25,8 @@ import dashboardRoutes from './modules/dashboard/dashboard.routes.js'
 import licenseStatesRoutes from './modules/catalogs/licenseStates/licenseStates.routes.js'
 import driverProductsRoutes from './modules/catalogs/driverProducts/driverProducts.routes.js'
 import saleDriverInfoRoutes from './modules/catalogs/saleDriverInfo/saleDriverInfo.routes.js'
+import reportsRoutes from './modules/reports/index.routes.js'
+import posSettingsRoutes from './modules/settings/pos/posSettings.routes.js'
 
 const app = express()
 
@@ -73,9 +75,12 @@ app.use('/api/catalogs/vehicle-types', vehicleTypesRoutes)
 app.use('/api/catalogs/license-states', licenseStatesRoutes)
 app.use('/api/catalogs/driver-products', driverProductsRoutes)
 app.use('/api/catalogs/sale-driver-info', saleDriverInfoRoutes)
-
 app.use('/api/customers', customersRoutes)
 app.use('/api/sales', salesRoutes)
+
+app.use('/api/reports', reportsRoutes)
+app.use('/api/settings/pos', posSettingsRoutes)
+
 
 // ============ MANEJO DE ERRORES ============
 app.use('/api/*', notFoundHandler)

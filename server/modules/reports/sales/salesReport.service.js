@@ -38,16 +38,20 @@ export const getData = async (filters = {}) => {
 
   const params = []
   
-  // Query base exacta
+  //Query corregida con DISTINCT para evitar duplicados
   let sql = `
-    SELECT 
+    SELECT DISTINCT
       s.sale_id,
       t.ticket_number,
       s.created_at,
       p.name as product_type,
       c.account_name as customer_name,
       u.full_name as operator_name,
-      pm.name as payment_method,
+      (SELECT pm2.name 
+       FROM payments pay2 
+       JOIN payment_methods pm2 ON pay2.method_id = pm2.method_id 
+       WHERE pay2.sale_uid = s.sale_uid 
+       LIMIT 1) as payment_method,
       st.code as status_code,
       st.label as status_label,
       ssa.weight_lb as gross_weight,
@@ -62,8 +66,6 @@ export const getData = async (filters = {}) => {
     JOIN scale_session_axles ssa ON sdi.match_key = ssa.uuid_weight
     LEFT JOIN customers c ON sdi.account_number = c.account_number
     LEFT JOIN users u ON s.operator_id = u.user_id
-    JOIN payments pay ON s.sale_uid = pay.sale_uid
-    LEFT JOIN payment_methods pm ON pay.method_id = pm.method_id
     LEFT JOIN status_catalogo st ON s.sale_status_id = st.status_id AND st.module = 'SALES'
     WHERE 1=1
   `
@@ -96,9 +98,9 @@ export const getData = async (filters = {}) => {
     params.push(operator_id)
   }
 
-  // Filtro por método de pago
+  // Filtro por método de pago - subconsulta para evitar duplicados
   if (payment_method_id && payment_method_id !== 'all') {
-    sql += ` AND pay.method_id = ?`
+    sql += ` AND EXISTS (SELECT 1 FROM payments pay WHERE pay.sale_uid = s.sale_uid AND pay.method_id = ?)`
     params.push(payment_method_id)
   }
 

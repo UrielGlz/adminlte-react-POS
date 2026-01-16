@@ -500,7 +500,9 @@ function UsersComplete() {
                             onChange={(e) => setFormData({ ...formData, role_code: e.target.value })}
                           >                          
                             <option value="OPERATOR">Operator</option>                            
-                            <option value="ADMIN">Administrator</option>
+                            <option value="ADMINISTRATOR">Administrator</option>
+                            <option value="ACCOUNTING">Accounting</option>
+
                           </select>
                         </div>
                       </div>

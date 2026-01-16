@@ -37,8 +37,9 @@ export const getData = async (filters = {}) => {
 
   const params = []
 
+  // ✅ Query con DISTINCT y subconsulta para payment_method
   let sql = `
-    SELECT 
+    SELECT DISTINCT
       t.ticket_id,
       t.ticket_number,
       t.printed_at,
@@ -54,12 +55,34 @@ export const getData = async (filters = {}) => {
       p.name as product_type,
       p.code as product_code,
       ssa.weight_lb as gross_weight,
-      pm.name as payment_method,
-      pm.code as payment_method_code,
-      pay.amount as payment_amount,
-      pay.received_at as payment_date,
-      pay_st.code as payment_status_code,
-      pay_st.label as payment_status_label,
+      (SELECT pm2.name 
+       FROM payments pay2 
+       JOIN payment_methods pm2 ON pay2.method_id = pm2.method_id 
+       WHERE pay2.sale_uid = s.sale_uid 
+       LIMIT 1) as payment_method,
+      (SELECT pm2.code 
+       FROM payments pay2 
+       JOIN payment_methods pm2 ON pay2.method_id = pm2.method_id 
+       WHERE pay2.sale_uid = s.sale_uid 
+       LIMIT 1) as payment_method_code,
+      (SELECT pay2.amount 
+       FROM payments pay2 
+       WHERE pay2.sale_uid = s.sale_uid 
+       LIMIT 1) as payment_amount,
+      (SELECT pay2.received_at 
+       FROM payments pay2 
+       WHERE pay2.sale_uid = s.sale_uid 
+       LIMIT 1) as payment_date,
+      (SELECT pay_st2.code 
+       FROM payments pay2 
+       JOIN status_catalogo pay_st2 ON pay2.payment_status_id = pay_st2.status_id AND pay_st2.module = 'PAYMENTS'
+       WHERE pay2.sale_uid = s.sale_uid 
+       LIMIT 1) as payment_status_code,
+      (SELECT pay_st2.label 
+       FROM payments pay2 
+       JOIN status_catalogo pay_st2 ON pay2.payment_status_id = pay_st2.status_id AND pay_st2.module = 'PAYMENTS'
+       WHERE pay2.sale_uid = s.sale_uid 
+       LIMIT 1) as payment_status_label,
       sale_st.code as sale_status_code,
       sale_st.label as sale_status_label,
       u.full_name as operator_name,
@@ -80,9 +103,6 @@ export const getData = async (filters = {}) => {
     JOIN products p ON sl.product_id = p.product_id
     LEFT JOIN scale_session_axles ssa ON sdi.match_key = ssa.uuid_weight
     LEFT JOIN users u ON s.operator_id = u.user_id
-    LEFT JOIN payments pay ON s.sale_uid = pay.sale_uid
-    LEFT JOIN payment_methods pm ON pay.method_id = pm.method_id
-    LEFT JOIN status_catalogo pay_st ON pay.payment_status_id = pay_st.status_id AND pay_st.module = 'PAYMENTS'
     LEFT JOIN status_catalogo sale_st ON s.sale_status_id = sale_st.status_id AND sale_st.module = 'SALES'
     LEFT JOIN driver_products dp ON sdi.driver_product_id = dp.product_id
     WHERE sdi.account_number IS NULL
@@ -97,10 +117,13 @@ export const getData = async (filters = {}) => {
     sql += ` AND DATE(s.created_at) <= ?`
     params.push(date_to)
   }
+  
+  // ✅ Filtro por método de pago con EXISTS (evita duplicados)
   if (payment_method !== 'all') {
-    sql += ` AND pm.method_id = ?`
+    sql += ` AND EXISTS (SELECT 1 FROM payments pay WHERE pay.sale_uid = s.sale_uid AND pay.method_id = ?)`
     params.push(payment_method)
   }
+  
   if (product_type !== 'all') {
     sql += ` AND p.product_id = ?`
     params.push(product_type)
@@ -125,11 +148,9 @@ export const getData = async (filters = {}) => {
     total_amount: transactions.reduce((sum, t) => sum + (parseFloat(t.total_amount) || 0), 0),
     total_paid: transactions.reduce((sum, t) => sum + (parseFloat(t.amount_paid) || 0), 0),
     total_pending: transactions.reduce((sum, t) => sum + (parseFloat(t.balance_due) || 0), 0),
-    // Por estado
     count_completed: transactions.filter(t => t.sale_status_code === 'COMPLETED').length,
     count_open: transactions.filter(t => t.sale_status_code === 'OPEN').length,
     count_cancelled: transactions.filter(t => t.sale_status_code === 'CANCELLED').length,
-    // Por método de pago
     by_payment_method: {}
   }
 

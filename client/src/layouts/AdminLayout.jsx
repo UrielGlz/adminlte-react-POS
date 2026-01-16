@@ -39,7 +39,14 @@ function AdminLayout() {
       <Header />
       <Sidebar />
       <main className="app-main">
-        <Outlet />
+        <div className="app-content-header">
+          {/* Espacio para breadcrumbs si los necesitas */}
+        </div>
+        <div className="app-content">
+          <div className="container-fluid">
+            <Outlet />
+          </div>
+        </div>
       </main>
       <Footer />
     </div>

@@ -36,7 +36,7 @@ export const getAll = async (req, res, next) => {
     const { users, total } = await UsersService.getAllUsers(options)
     
     // ========== IMPRIMIR EN CONSOLA ==========
-    logger.info('📋 Usuarios obtenidos de la BD:')
+    logger.info('Usuarios obtenidos de la BD:')
     console.log('\n========== USUARIOS ==========')
     console.table(users)
     console.log(`Total: ${total} usuarios`)

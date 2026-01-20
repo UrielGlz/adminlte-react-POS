@@ -15,7 +15,9 @@ function Sidebar() {
     const fetchNavigation = async () => {
       try {
         const response = await api.get('/navigation')
-        setNavigation(response.data.data)
+        // Procesar navegación para filtrar headers/trees sin hijos visibles
+        const processedNav = processNavigation(response.data.data)
+        setNavigation(processedNav)
       } catch (error) {
         console.error('Error loading navigation:', error)
       } finally {
@@ -27,6 +29,52 @@ function Sidebar() {
       fetchNavigation()
     }
   }, [user])
+
+  /**
+   * Procesa la navegación para:
+   * 1. Filtrar trees sin hijos visibles
+   * 2. Filtrar headers que no tienen ningún item después de ellos
+   */
+  const processNavigation = (items) => {
+    // Paso 1: Filtrar trees que no tienen hijos
+    const withFilteredTrees = items.filter(item => {
+      if (item.type === 'tree') {
+        // Solo mostrar tree si tiene al menos 1 hijo
+        return item.children && item.children.length > 0
+      }
+      return true
+    })
+
+    // Paso 2: Filtrar headers huérfanos
+    // Un header se muestra solo si el siguiente item NO es otro header y NO es el final
+    const result = []
+    for (let i = 0; i < withFilteredTrees.length; i++) {
+      const current = withFilteredTrees[i]
+      
+      if (current.type === 'header') {
+        // Buscar si hay al menos un item visible después de este header
+        // antes del siguiente header o del final
+        let hasVisibleContent = false
+        for (let j = i + 1; j < withFilteredTrees.length; j++) {
+          const next = withFilteredTrees[j]
+          if (next.type === 'header') {
+            break // Llegamos a otro header, parar
+          }
+          // Encontramos un link o tree, hay contenido
+          hasVisibleContent = true
+          break
+        }
+        
+        if (hasVisibleContent) {
+          result.push(current)
+        }
+      } else {
+        result.push(current)
+      }
+    }
+
+    return result
+  }
 
   // Detectar menús abiertos por ruta actual
   useEffect(() => {

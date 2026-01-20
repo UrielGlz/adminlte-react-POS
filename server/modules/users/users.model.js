@@ -41,7 +41,7 @@ export const findAll = async (options = {}) => {
     FROM users u
     LEFT JOIN users creator ON u.created_by_user = creator.user_id
     LEFT JOIN users editor ON u.edited_by_user = editor.user_id
-    WHERE 1=1`
+    WHERE 1=1 AND u.role_code <> 'SUPERADMIN'`
 
   // Filtro de búsqueda
   if (search) {

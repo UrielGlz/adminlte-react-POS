@@ -45,21 +45,28 @@ export const getUserById = async (id) => {
 /**
  * Crear nuevo usuario
  */
-export const createUser = async (data,currentUserId = null) => {
+export const createUser = async (data, currentUserId = null) => {
+  //Normalizar email: convertir string vacío a null
+  if (data.email === '' || data.email === undefined) {
+    data.email = null
+  }
   // unicidad
+
   if (data.username) {
     const existingUsername = await UsersModel.findByUsername(data.username)
     if (existingUsername) throw new ConflictError('Username already exists')
   }
+
+  //Solo validar unicidad si el email tiene valor
   if (data.email) {
     const existingEmail = await UsersModel.findByEmail(data.email)
     if (existingEmail) throw new ConflictError('Email already registered')
   }
 
-  // ✅ generar hash (bcrypt)
+  //generar hash (bcrypt)
   const password_hash = await bcrypt.hash(data.password, 12)
 
-  // ✅ preparar payload para BD (NO guardar password plano)
+  //preparar payload para BD (NO guardar password plano)
   const toCreate = {
     ...data,
     password_hash,
@@ -89,6 +96,11 @@ export const updateUser = async (id, data, currentUserId = null) => {
     throw new NotFoundError(`User with ID ${id} not found`)
   }
 
+  //Normalizar email: convertir string vacío a null
+  if (data.email === '' || data.email === undefined) {
+    data.email = null
+  }
+
   // Si cambia username, verificar que no exista
   if (data.username && data.username !== existingUser.username) {
     const usernameExists = await UsersModel.findByUsername(data.username)
@@ -97,14 +109,14 @@ export const updateUser = async (id, data, currentUserId = null) => {
     }
   }
 
-  // Si cambia email, verificar que no exista
+  //Solo validar unicidad si el email tiene valor Y es diferente al actual
   if (data.email && data.email !== existingUser.email) {
     const emailExists = await UsersModel.findByEmail(data.email)
     if (emailExists) {
       throw new ConflictError('Email already in use')
     }
   }
-  
+
   if (data.password && data.password.length >= 6) {
     data.password_hash = await bcrypt.hash(data.password, 12)
     data.password_algo = 'bcrypt'
@@ -112,7 +124,7 @@ export const updateUser = async (id, data, currentUserId = null) => {
     delete data.password
   }
 
-  // 👇 NUEVO: agregar edited_by_user
+  //NUEVO: agregar edited_by_user
   data.edited_by_user = currentUserId
 
   const updatedUser = await UsersModel.update(id, data)

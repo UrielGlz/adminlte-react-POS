@@ -134,7 +134,7 @@ function UsersComplete() {
       username: user.username || '',
       full_name: user.full_name || '',
       email: user.email || '',
-      role_code: user.role_code || 'USER',
+      role_code: user.role_code || '',
       is_active: user.is_active ?? 1,
       password: '',           // 👈 en edición NO forzar password
       confirmPassword: ''
@@ -142,7 +142,7 @@ function UsersComplete() {
       username: '',
       full_name: '',
       email: '',
-      role_code: 'USER',
+      role_code: '',
       is_active: 1,
       password: '',           // 👈 en nuevo sí se captura
       confirmPassword: ''
@@ -154,7 +154,7 @@ function UsersComplete() {
   const closeModal = () => {
     setShowModal(false)
     setEditUser(null)
-    setFormData({ username: '', full_name: '', email: '', role_code: 'USER', is_active: 1 })
+    setFormData({ username: '', full_name: '', email: '', role_code: '', is_active: 1 })
   }
 
   const filteredUsers = users.filter(user =>
@@ -323,12 +323,12 @@ function UsersComplete() {
                           <td>{user.user_id}</td>
                           <td>
                             <div className="d-flex align-items-center">
-                              <img
+                              {/* <img
                                 src={`https://i.pravatar.cc/40?u=${user.user_id}`}
                                 className="rounded-circle me-2"
                                 alt=""
                                 style={{ width: '32px', height: '32px' }}
-                              />
+                              /> */}
                               <strong>{user.username}</strong>
                             </div>
                           </td>
@@ -498,7 +498,9 @@ function UsersComplete() {
                             className="form-select"
                             value={formData.role_code}
                             onChange={(e) => setFormData({ ...formData, role_code: e.target.value })}
+                            required
                           >                          
+                            <option value="">Select an option</option>    
                             <option value="OPERATOR">Operator</option>                            
                             <option value="ADMINISTRATOR">Administrator</option>
                             <option value="ACCOUNTING">Accounting</option>

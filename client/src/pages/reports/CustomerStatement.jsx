@@ -12,7 +12,7 @@ function CustomerStatement() {
   // Filtros - default: último mes
   const today = new Date().toISOString().split('T')[0]
   const lastMonth = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  
+
   const [filters, setFilters] = useState({
     customer_id: '',
     date_from: lastMonth,
@@ -72,7 +72,7 @@ function CustomerStatement() {
       Object.entries(filters).forEach(([key, value]) => {
         if (value) params.append(key, value)
       })
-      
+
       const response = await api.get(`/reports/customer-statement/${type}?${params}`, {
         responseType: 'blob'
       })
@@ -112,10 +112,22 @@ function CustomerStatement() {
     return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(val)
   }
 
+  // const formatDate = (date) => {
+  //   if (!date) return '-'
+  //   return new Date(date).toLocaleString('en-US', {
+  //     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+  //   })
+  // }
   const formatDate = (date) => {
     if (!date) return '-'
     return new Date(date).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      timeZone: 'America/Matamoros', // Reynosa (frontera)
+      // si prefieres Texas: 'America/Chicago'
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
     })
   }
 
@@ -143,16 +155,16 @@ function CustomerStatement() {
           <p className="text-muted mb-0">Account summary and transaction history</p>
         </div>
         <div className="d-flex gap-2">
-          <button 
-            className="btn btn-danger" 
+          <button
+            className="btn btn-danger"
             onClick={() => exportFile('pdf')}
             disabled={exporting.pdf || !customer}
           >
             {exporting.pdf ? <span className="spinner-border spinner-border-sm me-2"></span> : <i className="bi bi-file-pdf me-2"></i>}
             Export PDF
           </button>
-          <button 
-            className="btn btn-success" 
+          <button
+            className="btn btn-success"
             onClick={() => exportFile('excel')}
             disabled={exporting.excel || !customer}
           >
@@ -171,10 +183,10 @@ function CustomerStatement() {
           <div className="row g-3 align-items-end">
             <div className="col-md-4">
               <label className="form-label small">Customer <span className="text-danger">*</span></label>
-              <select 
-                className="form-select" 
-                name="customer_id" 
-                value={filters.customer_id} 
+              <select
+                className="form-select"
+                name="customer_id"
+                value={filters.customer_id}
                 onChange={handleFilterChange}
               >
                 <option value="">-- Select Customer --</option>
@@ -249,7 +261,7 @@ function CustomerStatement() {
                   <table className="table table-sm table-borderless mb-0">
                     <tbody>
                       <tr>
-                        <td className="text-muted" style={{width: '120px'}}>Account #:</td>
+                        <td className="text-muted" style={{ width: '120px' }}>Account #:</td>
                         <td className="fw-bold">{customer.account_number}</td>
                       </tr>
                       <tr>
@@ -337,7 +349,7 @@ function CustomerStatement() {
               </div>
             </div>
             <div className="col">
-              <div className="card text-white" style={{backgroundColor: '#6f42c1'}}>
+              <div className="card text-white" style={{ backgroundColor: '#6f42c1' }}>
                 <div className="card-body py-3 text-center">
                   <h4 className="mb-0">{totals.total_reweigh || 0}</h4>
                   <small>Reweigh</small>
@@ -456,9 +468,9 @@ function CustomerStatement() {
                         <tr key={row.ticket_id}>
                           <td><code>{row.ticket_number}</code></td>
                           <td>
-                            <span 
-                              className="badge" 
-                              style={{backgroundColor: row.product_type === 'Weigh' ? '#17a2b8' : '#6f42c1'}}
+                            <span
+                              className="badge"
+                              style={{ backgroundColor: row.product_type === 'Weigh' ? '#17a2b8' : '#6f42c1' }}
                             >
                               {row.product_type}
                             </span>

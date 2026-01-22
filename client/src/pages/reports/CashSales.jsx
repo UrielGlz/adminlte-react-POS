@@ -12,7 +12,7 @@ function CashSales() {
   // Filtros - default: último mes
   const today = new Date().toISOString().split('T')[0]
   const lastMonth = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  
+
   const [filters, setFilters] = useState({
     date_from: lastMonth,
     date_to: today,
@@ -43,6 +43,7 @@ function CashSales() {
         if (value) params.append(key, value)
       })
       const response = await api.get(`/reports/cash-sales?${params}`)
+      console.log(response.data.data);
       setData(response.data.data)
     } catch (error) {
       Swal.fire('Error', 'Could not load report data', 'error')
@@ -64,7 +65,7 @@ function CashSales() {
       Object.entries(filters).forEach(([key, value]) => {
         if (value) params.append(key, value)
       })
-      
+
       const response = await api.get(`/reports/cash-sales/${type}?${params}`, {
         responseType: 'blob'
       })
@@ -104,12 +105,26 @@ function CashSales() {
     return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(val)
   }
 
+  // const formatDate = (date) => {
+  //   if (!date) return '-'
+  //   return new Date(date).toLocaleString('en-US', {
+  //     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+  //   })
+  // }
   const formatDate = (date) => {
     if (!date) return '-'
     return new Date(date).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      timeZone: 'America/Matamoros', // Reynosa (frontera)
+      // si prefieres Texas: 'America/Chicago'
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
     })
   }
+
+
 
   const getStatusBadge = (statusCode) => {
     const styles = {
@@ -138,16 +153,16 @@ function CashSales() {
           <p className="text-muted mb-0">Transactions without associated customer account</p>
         </div>
         <div className="d-flex gap-2">
-          <button 
-            className="btn btn-danger" 
+          <button
+            className="btn btn-danger"
             onClick={() => exportFile('pdf')}
             disabled={exporting.pdf}
           >
             {exporting.pdf ? <span className="spinner-border spinner-border-sm me-2"></span> : <i className="bi bi-file-pdf me-2"></i>}
             Export PDF
           </button>
-          <button 
-            className="btn btn-success" 
+          <button
+            className="btn btn-success"
             onClick={() => exportFile('excel')}
             disabled={exporting.excel}
           >
@@ -186,10 +201,10 @@ function CashSales() {
             </div>
             <div className="col-md-2">
               <label className="form-label small">Payment Method</label>
-              <select 
-                className="form-select" 
-                name="payment_method" 
-                value={filters.payment_method} 
+              <select
+                className="form-select"
+                name="payment_method"
+                value={filters.payment_method}
                 onChange={handleFilterChange}
               >
                 <option value="all">All Methods</option>
@@ -200,10 +215,10 @@ function CashSales() {
             </div>
             <div className="col-md-2">
               <label className="form-label small">Transaction Type</label>
-              <select 
-                className="form-select" 
-                name="product_type" 
-                value={filters.product_type} 
+              <select
+                className="form-select"
+                name="product_type"
+                value={filters.product_type}
                 onChange={handleFilterChange}
               >
                 <option value="all">All Types</option>
@@ -214,10 +229,10 @@ function CashSales() {
             </div>
             <div className="col-md-2">
               <label className="form-label small">Status</label>
-              <select 
-                className="form-select" 
-                name="sale_status" 
-                value={filters.sale_status} 
+              <select
+                className="form-select"
+                name="sale_status"
+                value={filters.sale_status}
                 onChange={handleFilterChange}
               >
                 <option value="all">All Status</option>
@@ -246,7 +261,7 @@ function CashSales() {
           </div>
         </div>
         <div className="col">
-          <div className="card text-white" style={{backgroundColor: '#17a2b8'}}>
+          <div className="card text-white" style={{ backgroundColor: '#17a2b8' }}>
             <div className="card-body py-3 text-center">
               <h4 className="mb-0">{totals.total_weigh || 0}</h4>
               <small>Weigh</small>
@@ -254,7 +269,7 @@ function CashSales() {
           </div>
         </div>
         <div className="col">
-          <div className="card text-white" style={{backgroundColor: '#6f42c1'}}>
+          <div className="card text-white" style={{ backgroundColor: '#6f42c1' }}>
             <div className="card-body py-3 text-center">
               <h4 className="mb-0">{totals.total_reweigh || 0}</h4>
               <small>Reweigh</small>
@@ -400,9 +415,9 @@ function CashSales() {
                       <tr key={row.ticket_id}>
                         <td><code>{row.ticket_number}</code></td>
                         <td>
-                          <span 
-                            className="badge" 
-                            style={{backgroundColor: row.product_type === 'Weigh' ? '#17a2b8' : '#6f42c1'}}
+                          <span
+                            className="badge"
+                            style={{ backgroundColor: row.product_type === 'Weigh' ? '#17a2b8' : '#6f42c1' }}
                           >
                             {row.product_type}
                           </span>
@@ -440,8 +455,8 @@ function CashSales() {
             <div>
               <h6 className="text-info mb-1">About Cash Sales</h6>
               <p className="text-muted mb-0 small">
-                This report shows all transactions where no customer account was associated. 
-                These are walk-in customers paying at the time of service without a credit account. 
+                This report shows all transactions where no customer account was associated.
+                These are walk-in customers paying at the time of service without a credit account.
                 In accounting terms, these are "General Public Sales" or "Cash Sales".
               </p>
             </div>

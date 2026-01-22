@@ -13,7 +13,7 @@ function SalesReport() {
   // Filtros - default: últimos 7 días
   const today = new Date().toISOString().split('T')[0]
   const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  
+
   const [filters, setFilters] = useState({
     date_from: lastWeek,
     date_to: today,
@@ -68,7 +68,7 @@ function SalesReport() {
       Object.entries(filters).forEach(([key, value]) => {
         if (value) params.append(key, value)
       })
-      
+
       const response = await api.get(`/reports/sales/${type}?${params}`, {
         responseType: 'blob'
       })
@@ -108,10 +108,23 @@ function SalesReport() {
     return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(val)
   }
 
+  // const formatDate = (date) => {
+  //   if (!date) return '-'
+  //   return new Date(date).toLocaleString('en-US', {
+  //     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+  //   })
+  // }
+  //TODO: importante mantener este formato
   const formatDate = (date) => {
     if (!date) return '-'
     return new Date(date).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      timeZone: 'America/Matamoros', // Reynosa (frontera)
+      // si prefieres Texas: 'America/Chicago'
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
     })
   }
 
@@ -130,16 +143,16 @@ function SalesReport() {
           <p className="text-muted mb-0">Transaction details and sales summary</p>
         </div>
         <div className="d-flex gap-2">
-          <button 
-            className="btn btn-danger" 
+          <button
+            className="btn btn-danger"
             onClick={() => exportFile('pdf')}
             disabled={exporting.pdf || data.length === 0}
           >
             {exporting.pdf ? <span className="spinner-border spinner-border-sm me-2"></span> : <i className="bi bi-file-pdf me-2"></i>}
             Export PDF
           </button>
-          <button 
-            className="btn btn-success" 
+          <button
+            className="btn btn-success"
             onClick={() => exportFile('excel')}
             disabled={exporting.excel || data.length === 0}
           >
@@ -252,7 +265,7 @@ function SalesReport() {
             </div>
           </div>
           <div className="col">
-            <div className="card text-white" style={{backgroundColor: '#6f42c1'}}>
+            <div className="card text-white" style={{ backgroundColor: '#6f42c1' }}>
               <div className="card-body py-3 text-center">
                 <h4 className="mb-0">{totals.total_reweigh || 0}</h4>
                 <small>Reweigh</small>
@@ -326,9 +339,9 @@ function SalesReport() {
                     <tr key={row.sale_id}>
                       <td><code>{row.ticket_number}</code></td>
                       <td>
-                        <span 
-                          className="badge" 
-                          style={{backgroundColor: row.product_type === 'Weigh' ? '#17a2b8' : '#6f42c1'}}
+                        <span
+                          className="badge"
+                          style={{ backgroundColor: row.product_type === 'Weigh' ? '#17a2b8' : '#6f42c1' }}
                         >
                           {row.product_type}
                         </span>

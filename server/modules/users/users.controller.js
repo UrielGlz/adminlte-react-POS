@@ -141,19 +141,23 @@ export const update = async (req, res, next) => {
  * DELETE /api/users/:id
  * Eliminar usuario
  */
+
 export const remove = async (req, res, next) => {
   try {
     const { id } = req.params
-    
-    await UsersService.deleteUser(id)
-    
-    logger.info(`🗑️ Usuario eliminado: ID ${id}`)
-    
-    return response.success(res, null, 'User deleted successfully')
+
+    const result = await UsersService.deleteUser(id)
+
+    const msg = result?.deactivated
+      ? 'User deactivated successfully'
+      : 'User deleted successfully'
+
+    return response.success(res, result, msg)
   } catch (error) {
     next(error)
   }
 }
+
 
 export default {
   getAll,

@@ -101,8 +101,8 @@ function UsersComplete() {
 
   const handleDelete = async (id) => {
     const ok = await confirmAction({
-      title: 'Delete user?',
-      text: 'This will permanently remove the user.',
+      title: 'Disable user?',
+      text: 'This will disable the user..',
       confirmText: 'Yes, delete',
       cancelText: 'Cancel',
       type: 'warning',
@@ -173,9 +173,21 @@ function UsersComplete() {
     return badges[role] || 'secondary'
   }
 
-  const formatDate = (dateString) => {
+  // const formatDate = (dateString) => {
+  //   if (!dateString) return '-'
+  //   return new Date(dateString).toLocaleDateString('es-MX')
+  // }
+   const formatDate = (dateString) => {
     if (!dateString) return '-'
-    return new Date(dateString).toLocaleDateString('es-MX')
+    return new Date(dateString).toLocaleString('en-US', {
+      timeZone: 'America/Matamoros', // Reynosa (frontera)
+      // si prefieres Texas: 'America/Chicago'
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    })
   }
 
   return (

@@ -37,7 +37,7 @@ export const getData = async (filters = {}) => {
 
   const params = []
 
-  // ✅ Query con DISTINCT y subconsulta para payment_method
+  //Query con DISTINCT y subconsulta para payment_method
   let sql = `
     SELECT DISTINCT
       t.ticket_id,

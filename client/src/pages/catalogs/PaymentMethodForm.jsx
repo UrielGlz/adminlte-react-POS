@@ -86,14 +86,27 @@ function PaymentMethodForm() {
     } finally { setSaving(false) }
   }
 
-  const formatDate = (dateString) => {
+  // const formatDate = (dateString) => {
+  //   if (!dateString) return '-'
+  //   return new Date(dateString).toLocaleString('en-US', {
+  //     year: 'numeric',
+  //     month: 'short',
+  //     day: 'numeric',
+  //     hour: '2-digit',
+  //     minute: '2-digit'
+  //   })
+  // }
+
+   const formatDate = (dateString) => {
     if (!dateString) return '-'
     return new Date(dateString).toLocaleString('en-US', {
-      year: 'numeric',
+      timeZone: 'America/Matamoros', // Reynosa (frontera)
+      // si prefieres Texas: 'America/Chicago'
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: true,
     })
   }
 

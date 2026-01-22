@@ -23,7 +23,7 @@ export const findAll = async (options = {}) => {
   const offset = (page - 1) * limit
   const params = []
 
-    let sql = `SELECT 
+  let sql = `SELECT 
       u.user_id,
       u.username,
       u.full_name,
@@ -148,7 +148,7 @@ export const create = async (data) => {
     created_by_user = null
   } = data
 
-   const sql = `
+  const sql = `
     INSERT INTO users (username, full_name, email, password_hash, password_algo, role_code, is_active, must_change_pw, site_id, created_at, created_by_user)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)`
 
@@ -223,11 +223,44 @@ export const update = async (id, data) => {
 /**
  * Eliminar usuario
  */
+// users.model.js
 export const remove = async (id) => {
-  const sql = `DELETE FROM users WHERE user_id = ?`
-  const result = await query(sql, [id])
-  return result.affectedRows > 0
+  // 1) si no existe, no hace nada
+  const user = await findById(id)
+  if (!user) return { deleted: false, deactivated: false, reason: 'NOT_FOUND' }
+
+  // opcional: proteger SUPERADMIN
+  if (user.role_code === 'SUPERADMIN') {
+    return { deleted: false, deactivated: false, reason: 'FORBIDDEN' }
+  }
+
+  // 2) validar si fue usado en sales (FK: sales.operator_id -> users.user_id)
+  const [{ cnt }] = await query(
+    `SELECT COUNT(*) AS cnt FROM sales WHERE operator_id = ? LIMIT 1`,
+    [id]
+  )
+
+  // 3) si tiene referencias, soft-delete
+  if (Number(cnt) > 0) {
+    await query(`UPDATE users SET is_active = 0, updated_at = NOW() WHERE user_id = ?`, [id])
+    return { deleted: false, deactivated: true, refs: { sales_operator: Number(cnt) } }
+  }
+
+  // (extra recomendado) si lo referencian otros users (created_by_user / edited_by_user)
+  const [{ ucnt }] = await query(
+    `SELECT COUNT(*) AS ucnt FROM users WHERE created_by_user = ? OR edited_by_user = ? LIMIT 1`,
+    [id, id]
+  )
+  if (Number(ucnt) > 0) {
+    await query(`UPDATE users SET is_active = 0, updated_at = NOW() WHERE user_id = ?`, [id])
+    return { deleted: false, deactivated: true, refs: { users_audit: Number(ucnt) } }
+  }
+
+  // 4) si no tiene referencias, delete real
+  const result = await query(`DELETE FROM users WHERE user_id = ?`, [id])
+  return { deleted: result.affectedRows > 0, deactivated: false }
 }
+
 
 /**
  * Obtener estadísticas de usuarios

@@ -78,7 +78,19 @@ function SaleDetail() {
   }
 
   const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0)
-  const formatDate = (d) => d ? new Date(d).toLocaleString() : '-'
+  // const formatDate = (d) => d ? new Date(d).toLocaleString() : '-'
+   const formatDate = (d) => {
+    if (!d) return '-'
+    return new Date(d).toLocaleString('en-US', {
+      timeZone: 'America/Matamoros', // Reynosa (frontera)
+      // si prefieres Texas: 'America/Chicago'
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    })
+  }
 
   const getStatusBadge = (code) => {
     const colors = { 'OPEN': 'warning', 'COMPLETED': 'success', 'CANCELLED': 'danger', 'REFUNDED': 'info' }

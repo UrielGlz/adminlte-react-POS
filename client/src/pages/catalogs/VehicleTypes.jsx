@@ -58,12 +58,16 @@ function VehicleTypes() {
     i.code?.toLowerCase().includes(search.toLowerCase())
   )
 
-  const formatDate = (dateString) => {
-    if (!dateString) return '-'
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
+  const formatDate = (date) => {
+    if (!date) return '-'
+    return new Date(date).toLocaleString('en-US', {
+      timeZone: 'America/Matamoros', // Reynosa (frontera)
+      // si prefieres Texas: 'America/Chicago'
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
     })
   }
 

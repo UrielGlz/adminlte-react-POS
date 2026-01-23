@@ -58,7 +58,7 @@ export const getCustomerInfo = async (customerId) => {
  */
 export const getCustomerTransactions = async (customerId, dateFrom, dateTo) => {
   const params = [customerId]
-  
+
   let sql = `
     SELECT 
       t.ticket_id,
@@ -134,7 +134,8 @@ export const getData = async (filters = {}) => {
   }
 
   const transactions = await getCustomerTransactions(customer_id, date_from, date_to)
-
+  const toNum = v => Number.parseFloat(v) || 0
+  const norm = v => (v ?? '').toString().trim().toUpperCase()
   // Calcular totales del período
   const totals = {
     total_transactions: transactions.length,
@@ -144,13 +145,34 @@ export const getData = async (filters = {}) => {
     total_subtotal: transactions.reduce((sum, t) => sum + (parseFloat(t.subtotal) || 0), 0),
     total_tax: transactions.reduce((sum, t) => sum + (parseFloat(t.tax_amount) || 0), 0),
     total_amount: transactions.reduce((sum, t) => sum + (parseFloat(t.total_amount) || 0), 0),
-    total_paid: transactions.reduce((sum, t) => sum + (parseFloat(t.amount_paid) || 0), 0),
-    total_pending: transactions.reduce((sum, t) => sum + (parseFloat(t.balance_due) || 0), 0),
+    //total_paid: transactions.reduce((sum, t) => sum + (parseFloat(t.amount_paid) || 0), 0),
+    total_paid: transactions.reduce((sum, t) => {
+      if (norm(t.sale_status_code) === 'CANCELLED') return sum
+      if (norm(t.payment_status_code) === 'RECEIVED') return sum + toNum(t.total_amount)
+      return sum
+    }, 0),
+
+    //total_pending: transactions.reduce((sum, t) => sum + (parseFloat(t.balance_due) || 0), 0),
+
+
+    total_pending: transactions.reduce((sum, t) => {
+      if (norm(t.sale_status_code) === 'CANCELLED') return sum
+      if (norm(t.payment_status_code) === 'PENDING') return sum + toNum(t.total_amount) // o subtotal si no hay tax
+      return sum
+    }, 0),
+
     // Por estado de pago
     count_paid: transactions.filter(t => t.payment_status_code === 'RECEIVED').length,
     count_pending: transactions.filter(t => t.payment_status_code === 'PENDING').length,
     count_cancelled: transactions.filter(t => t.sale_status_code === 'CANCELLED').length
   }
+  console.log('pending codes:', [...new Set(transactions.map(t => t.payment_status_code))])
+  console.log('pending count:', transactions.filter(t => (t.payment_status_code || '').trim() === 'PENDING').length)
+  console.log('pending amounts:', transactions
+    .filter(t => (t.payment_status_code || '').trim() === 'PENDING')
+    .map(t => ({ ticket: t.ticket_number, amt: t.total_amount, paid: t.amount_paid }))
+  )
+
 
   return { customer, transactions, totals }
 }
@@ -192,14 +214,14 @@ export const generatePdf = async (filters = {}) => {
 
   const formatDate = (date) => {
     if (!date) return '-'
-    return new Date(date).toLocaleDateString('en-US', { 
+    return new Date(date).toLocaleDateString('en-US', {
       year: 'numeric', month: 'short', day: 'numeric'
     })
   }
 
   const formatDateTime = (date) => {
     if (!date) return '-'
-    return new Date(date).toLocaleString('en-US', { 
+    return new Date(date).toLocaleString('en-US', {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     })
   }
@@ -208,8 +230,8 @@ export const generatePdf = async (filters = {}) => {
 
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ 
-        size: 'LETTER', 
+      const doc = new PDFDocument({
+        size: 'LETTER',
         layout: 'portrait',
         margins: { top: 40, bottom: 40, left: 40, right: 40 }
       })
@@ -245,7 +267,7 @@ export const generatePdf = async (filters = {}) => {
       const availableForRows = pageHeight - 100 - tableHeaderHeight - footerHeight // Para páginas siguientes
       const rowsFirstPage = Math.floor((pageHeight - headerAreaHeight - tableHeaderHeight - footerHeight) / rowHeight)
       const rowsPerPage = Math.floor(availableForRows / rowHeight)
-      
+
       const totalPages = Math.max(1, Math.ceil((transactions.length - rowsFirstPage) / rowsPerPage) + 1)
       let currentPage = 1
       let rowIndex = 0
@@ -269,15 +291,15 @@ export const generatePdf = async (filters = {}) => {
 
         // Título
         doc.fontSize(14).fillColor(primaryColor).font('Helvetica-Bold')
-           .text(settings.companyName, marginLeft + 70, headerTop + 5, { width: contentWidth - 140, align: 'center' })
-        
+          .text(settings.companyName, marginLeft + 70, headerTop + 5, { width: contentWidth - 140, align: 'center' })
+
         doc.fontSize(11).fillColor('#333333').font('Helvetica-Bold')
-           .text('Customer Statement', marginLeft + 70, headerTop + 22, { width: contentWidth - 140, align: 'center' })
+          .text('Customer Statement', marginLeft + 70, headerTop + 22, { width: contentWidth - 140, align: 'center' })
 
         // Fecha generación
         doc.fontSize(8).fillColor(textGray).font('Helvetica')
-           .text(`Generated: ${new Date().toLocaleString('en-US')}`, pageWidth - marginRight - 120, headerTop + 8, { width: 120, align: 'right' })
-           .text(dateRange, pageWidth - marginRight - 120, headerTop + 20, { width: 120, align: 'right' })
+          .text(`Generated: ${new Date().toLocaleString('en-US')}`, pageWidth - marginRight - 120, headerTop + 8, { width: 120, align: 'right' })
+          .text(dateRange, pageWidth - marginRight - 120, headerTop + 20, { width: 120, align: 'right' })
 
         // Línea separadora
         doc.moveTo(marginLeft, 65).lineTo(pageWidth - marginRight, 65).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
@@ -287,8 +309,8 @@ export const generatePdf = async (filters = {}) => {
 
         doc.rect(marginLeft, yPos, contentWidth, 18).fill(headerBg)
         doc.fontSize(10).fillColor('#FFFFFF').font('Helvetica-Bold')
-           .text('Customer Information', marginLeft + 5, yPos + 4)
-        
+          .text('Customer Information', marginLeft + 5, yPos + 4)
+
         yPos += 22
 
         // Columna izquierda
@@ -309,7 +331,7 @@ export const generatePdf = async (filters = {}) => {
           doc.text(`Current Balance: ${formatCurrency(customer.current_balance)}`, rightCol, yPos + 24)
           doc.text(`Available Credit: ${formatCurrency(customer.available_credit)}`, rightCol, yPos + 36)
           doc.text(`Payment Terms: ${customer.payment_terms_days || 30} days`, rightCol, yPos + 48)
-          
+
           if (customer.is_suspended) {
             doc.font('Helvetica-Bold').fillColor(dangerColor).text('⚠ ACCOUNT SUSPENDED', rightCol, yPos + 60)
           }
@@ -322,7 +344,7 @@ export const generatePdf = async (filters = {}) => {
         // ========== RESUMEN DEL PERÍODO ==========
         doc.rect(marginLeft, yPos, contentWidth, 18).fill('#E7E6E6')
         doc.fontSize(10).fillColor('#333333').font('Helvetica-Bold')
-           .text('Statement Summary', marginLeft + 5, yPos + 4)
+          .text('Statement Summary', marginLeft + 5, yPos + 4)
 
         yPos += 22
         doc.fontSize(8).font('Helvetica')
@@ -354,11 +376,11 @@ export const generatePdf = async (filters = {}) => {
       // ========== HEADER SIMPLIFICADO (páginas siguientes) ==========
       const drawSimpleHeader = () => {
         doc.fontSize(10).fillColor(primaryColor).font('Helvetica-Bold')
-           .text(`${settings.companyName} - Customer Statement`, marginLeft, 25)
+          .text(`${settings.companyName} - Customer Statement`, marginLeft, 25)
         doc.fontSize(9).fillColor('#333333').font('Helvetica')
-           .text(`${customer.account_name} (${customer.account_number})`, marginLeft, 40)
+          .text(`${customer.account_name} (${customer.account_number})`, marginLeft, 40)
         doc.fontSize(8).fillColor(textGray)
-           .text(`Page ${currentPage} of ${totalPages}`, pageWidth - marginRight - 60, 30, { width: 60, align: 'right' })
+          .text(`Page ${currentPage} of ${totalPages}`, pageWidth - marginRight - 60, 30, { width: 60, align: 'right' })
 
         doc.moveTo(marginLeft, 55).lineTo(pageWidth - marginRight, 55).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
 
@@ -411,7 +433,7 @@ export const generatePdf = async (filters = {}) => {
       // Dibujar filas
       while (rowIndex < transactions.length) {
         const row = transactions[rowIndex]
-        
+
         // Verificar si necesitamos nueva página
         const maxRows = currentPage === 1 ? rowsFirstPage : rowsPerPage
         const rowsDrawn = currentPage === 1 ? rowIndex : rowIndex - rowsFirstPage - (currentPage - 2) * rowsPerPage
@@ -468,7 +490,7 @@ export const generatePdf = async (filters = {}) => {
       // Borde de tabla
       const tableStartY = currentPage === 1 ? headerAreaHeight : 65
       doc.rect(tableLeft, tableStartY, tableWidth, yPos - tableStartY)
-         .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
+        .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
 
       drawFooter()
       doc.end()
@@ -627,12 +649,12 @@ export const generateExcel = async (filters = {}) => {
   let currentRow = tableStartRow + 1
   transactions.forEach((row, index) => {
     const statusLabel = row.sale_status_code === 'CANCELLED' ? 'Cancelled' :
-                        row.payment_status_code === 'RECEIVED' ? 'Paid' :
-                        row.payment_status_code === 'PENDING' ? 'Pending' : '-'
+      row.payment_status_code === 'RECEIVED' ? 'Paid' :
+        row.payment_status_code === 'PENDING' ? 'Pending' : '-'
 
     const statusColor = row.sale_status_code === 'CANCELLED' ? 'DC3545' :
-                        row.payment_status_code === 'RECEIVED' ? '28A745' :
-                        row.payment_status_code === 'PENDING' ? 'FFC107' : '666666'
+      row.payment_status_code === 'RECEIVED' ? '28A745' :
+        row.payment_status_code === 'PENDING' ? 'FFC107' : '666666'
 
     const rowData = [
       row.ticket_number || '-',

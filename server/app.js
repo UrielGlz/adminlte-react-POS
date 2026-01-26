@@ -27,6 +27,7 @@ import driverProductsRoutes from './modules/catalogs/driverProducts/driverProduc
 import saleDriverInfoRoutes from './modules/catalogs/saleDriverInfo/saleDriverInfo.routes.js'
 import reportsRoutes from './modules/reports/index.routes.js'
 import posSettingsRoutes from './modules/settings/pos/posSettings.routes.js'
+import arRoutes from './modules/ar/ar.routes.js'
 
 const app = express()
 
@@ -80,6 +81,8 @@ app.use('/api/sales', salesRoutes)
 
 app.use('/api/reports', reportsRoutes)
 app.use('/api/settings/pos', posSettingsRoutes)
+app.use('/api/ar', arRoutes)
+
 
 
 // ============ MANEJO DE ERRORES ============

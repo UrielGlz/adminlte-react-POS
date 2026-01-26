@@ -36,7 +36,9 @@ import SalesReport from './pages/reports/SalesReport'
 import CustomerStatement from './pages/reports/CustomerStatement'
 import PosSettings from './pages/settings/PosSettings'
 import CashSales from './pages/reports/CashSales'
-
+import AccountsReceivable from './pages/ar/AccountsReceivable'
+import PaymentHistory from './pages/ar/PaymentHistory'
+import PaymentDetail from './pages/ar/PaymentDetail'
 function App() {
   return (
     <AuthProvider>
@@ -106,6 +108,10 @@ function App() {
           <Route path="/reports/cash-sales" element={<CashSales />} />
 
           <Route path="/settings/pos" element={<PosSettings />} />
+
+          <Route path="/ar" element={<AccountsReceivable />} />
+          <Route path="/ar/history" element={<PaymentHistory />} />
+          <Route path="/ar/payments/:id" element={<PaymentDetail />} />
 
 
         </Route>

@@ -11,6 +11,7 @@ export const getAll = async () => {
             (SELECT COUNT(*) FROM users u WHERE u.role_code = r.code) as users_count
      FROM roles r
      LEFT JOIN role_permissions rp ON r.role_id = rp.role_id
+     WHERE r.role_id <> 1
      GROUP BY r.role_id
      ORDER BY r.role_id ASC`
   )

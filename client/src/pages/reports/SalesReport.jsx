@@ -272,22 +272,22 @@ function SalesReport() {
               </div>
             </div>
           </div>
-          <div className="col">
+          {/* <div className="col">
             <div className="card bg-secondary text-white">
               <div className="card-body py-3 text-center">
                 <h4 className="mb-0">{formatNumber(totals.total_gross_weight)}</h4>
                 <small>Weight (lb)</small>
               </div>
             </div>
-          </div>
-          <div className="col">
+          </div> */}
+          {/* <div className="col">
             <div className="card bg-warning text-dark">
               <div className="card-body py-3 text-center">
                 <h5 className="mb-0">{formatCurrency(totals.total_tax)}</h5>
                 <small>Tax</small>
               </div>
             </div>
-          </div>
+          </div> */}
           <div className="col">
             <div className="card bg-success text-white">
               <div className="card-body py-3 text-center">
@@ -354,9 +354,25 @@ function SalesReport() {
                       <td className="text-end">{formatCurrency(row.subtotal)}</td>
                       <td className="text-end">{formatCurrency(row.tax_amount)}</td>
                       <td className="text-end fw-bold">{formatCurrency(row.total_amount)}</td>
-                      <td className="text-center">
+                      {/* <td className="text-center">
                         <span className="badge bg-success">{row.status_label || row.status_code || '-'}</span>
+                      </td> */}
+                      <td className="text-center">
+                        {(() => {
+                          const s = (row.status_code || '').toUpperCase()
+                          const badgeClass =
+                            s === 'COMPLETED' ? 'bg-success'
+                              : s === 'CANCELLED' ? 'bg-danger'
+                                : 'bg-default'
+
+                          return (
+                            <span className={`badge ${badgeClass}`}>
+                              {row.status_label || row.status_code || '-'}
+                            </span>
+                          )
+                        })()}
                       </td>
+
                     </tr>
                   ))}
                 </tbody>

@@ -89,8 +89,13 @@ function ReportsIndex() {
                         <div className={`display-4 text-${report.color} mb-3`}>
                           <i className={`bi ${report.icon}`}></i>
                         </div>
-                        <h5 className="card-title text-dark">{report.title}</h5>
-                        <p className="card-text text-muted small">{report.description}</p>
+                        <h5 className="card-title text-dark mb-2 w-100" style={{ float: 'none' }}>
+                          {report.title}
+                        </h5>
+
+                        <p className="card-text text-muted small mb-3 w-100" style={{ float: 'none' }}>
+                          {report.description}
+                        </p>
                         <div className="mt-3">
                           <span className="badge bg-light text-dark me-2">
                             <i className="bi bi-file-pdf text-danger me-1"></i>PDF

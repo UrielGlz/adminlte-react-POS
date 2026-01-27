@@ -37,7 +37,6 @@ export const getData = async (filters = {}) => {
 
   const params = []
 
-  //Query con DISTINCT y subconsulta para payment_method
   let sql = `
     SELECT DISTINCT
       t.ticket_id,
@@ -118,7 +117,6 @@ export const getData = async (filters = {}) => {
     params.push(date_to)
   }
   
-  // ✅ Filtro por método de pago con EXISTS (evita duplicados)
   if (payment_method !== 'all') {
     sql += ` AND EXISTS (SELECT 1 FROM payments pay WHERE pay.sale_uid = s.sale_uid AND pay.method_id = ?)`
     params.push(payment_method)
@@ -197,6 +195,11 @@ export const getFilterOptions = async () => {
 
 /**
  * Generar PDF
+ * MODIFICADO:
+ * - Agregado encabezado con Company Name | Address | Phone
+ * - Cambiado "Type" por "Service"
+ * - Agregadas columnas: Driver, Trailer #, Tractor #, Scale Op
+ * - Quitadas columnas: Subtotal y Tax
  */
 export const generatePdf = async (filters = {}) => {
   const { transactions, totals } = await getData(filters)
@@ -244,23 +247,16 @@ export const generatePdf = async (filters = {}) => {
       const dangerColor = '#dc3545'
 
       // Dimensiones
-      // const pageWidth = 792
-      // const pageHeight = 612
-      // const marginLeft = 30
-      // const marginRight = 30
       const pageWidth = doc.page.width
       const pageHeight = doc.page.height
       const marginLeft = doc.page.margins.left
       const marginRight = doc.page.margins.right
-
       const contentWidth = pageWidth - marginLeft - marginRight
-      //const footerY = pageHeight - 25
       const footerY = pageHeight - doc.page.margins.bottom - 12
-
       const rowHeight = 12
 
       // Paginación
-      const headerAreaHeight = 130
+      const headerAreaHeight = 145 // Aumentado para incluir línea de company info
       const tableHeaderHeight = 14
       const footerHeight = 30
       const availableForRows = pageHeight - 70 - tableHeaderHeight - footerHeight
@@ -276,8 +272,9 @@ export const generatePdf = async (filters = {}) => {
         filters.date_from ? `From: ${filters.date_from}` : '',
         filters.date_to ? `To: ${filters.date_to}` : ''
       ].filter(Boolean).join(' - ') || 'All time'
-      const rightColW = 190;
-      const rightX = pageWidth - marginRight - rightColW;
+
+      const rightColW = 190
+      const rightX = pageWidth - marginRight - rightColW
 
       // ========== HEADER PRINCIPAL ==========
       const drawMainHeader = () => {
@@ -297,19 +294,25 @@ export const generatePdf = async (filters = {}) => {
         doc.fontSize(11).fillColor('#333333').font('Helvetica-Bold')
           .text('Cash Sales Report', marginLeft + 60, headerTop + 20, { width: contentWidth - 180, align: 'center' })
 
-        // doc.fontSize(8).fillColor(textGray).font('Helvetica')
-        //   .text(`Generated: ${new Date().toLocaleString('en-US')}`, pageWidth - marginRight - 100, headerTop + 5, { width: 100, align: 'right' })
-        //   .text(dateRange, pageWidth - marginRight - 100, headerTop + 15, { width: 100, align: 'right' })
-
         doc.fontSize(8).fillColor(textGray).font('Helvetica')
-  .text(`Generated: ${new Date().toLocaleString('en-US')}`, rightX, headerTop + 5, { width: rightColW, align: 'right', ellipsis: true })
-  .text(dateRange, rightX, headerTop + 15, { width: rightColW, align: 'right', ellipsis: true });
+          .text(`Generated: ${new Date().toLocaleString('en-US')}`, rightX, headerTop + 5, { width: rightColW, align: 'right', ellipsis: true })
+          .text(dateRange, rightX, headerTop + 15, { width: rightColW, align: 'right', ellipsis: true })
 
-        // Línea
-        doc.moveTo(marginLeft, 50).lineTo(pageWidth - marginRight, 50).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
+        // Línea separadora
+        doc.moveTo(marginLeft, 48).lineTo(pageWidth - marginRight, 48).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
+
+        // NUEVA LÍNEA: Company Name | Address | Phone
+        const companyInfoLine = [
+          settings.companyName || '',
+          settings.companyAddress || '',
+          settings.companyPhone || ''
+        ].filter(Boolean).join(' | ')
+
+        doc.fontSize(7).fillColor(textGray).font('Helvetica')
+          .text(companyInfoLine, marginLeft, 52, { width: contentWidth, align: 'center' })
 
         // ========== RESUMEN ==========
-        let yPos = 55
+        let yPos = 65
 
         // Cards de resumen
         const cardWidth = 85
@@ -335,15 +338,13 @@ export const generatePdf = async (filters = {}) => {
           cardX += cardWidth + cardGap
         })
 
-        // Totales financieros
+        // Totales financieros (sin Subtotal y Tax)
         yPos += cardHeight + 10
         doc.fontSize(7).fillColor('#333333').font('Helvetica')
         doc.text(`Total Weight: ${formatNumber(totals.total_weight)} lb`, marginLeft, yPos)
-        doc.text(`Subtotal: ${formatCurrency(totals.total_subtotal)}`, marginLeft + 120, yPos)
-        doc.text(`Tax: ${formatCurrency(totals.total_tax)}`, marginLeft + 220, yPos)
-        doc.font('Helvetica-Bold').text(`Total: ${formatCurrency(totals.total_amount)}`, marginLeft + 300, yPos)
-        doc.fillColor(successColor).text(`Paid: ${formatCurrency(totals.total_paid)}`, marginLeft + 400, yPos)
-        doc.fillColor(dangerColor).text(`Pending: ${formatCurrency(totals.total_pending)}`, marginLeft + 500, yPos)
+        doc.font('Helvetica-Bold').text(`Total: ${formatCurrency(totals.total_amount)}`, marginLeft + 150, yPos)
+        doc.fillColor(successColor).text(`Paid: ${formatCurrency(totals.total_paid)}`, marginLeft + 280, yPos)
+        doc.fillColor(dangerColor).text(`Pending: ${formatCurrency(totals.total_pending)}`, marginLeft + 400, yPos)
 
         // Por método de pago
         yPos += 12
@@ -377,17 +378,18 @@ export const generatePdf = async (filters = {}) => {
       }
 
       // ========== TABLA ==========
+      // Nuevo orden: Ticket #, Service, Date, Driver, Trailer #, Tractor #, Scale Op, Plates, Weight, Total, Paid, Method, Status
       const tableLeft = marginLeft
-      const colWidths = [55, 50, 70, 80, 55, 45, 50, 50, 50, 50, 55, 55] // Total ~715
+      const colWidths = [50, 45, 65, 70, 50, 50, 65, 50, 45, 50, 50, 50, 55] // 13 columnas
       const tableWidth = colWidths.reduce((a, b) => a + b, 0)
-      const headers = ['Ticket #', 'Type', 'Date', 'Driver', 'Plates', 'Weight', 'Subtotal', 'Tax', 'Total', 'Paid', 'Method', 'Status']
+      const headers = ['Ticket #', 'Service', 'Date', 'Driver', 'Trailer #', 'Tractor #', 'Scale Op', 'Plates', 'Weight', 'Total', 'Paid', 'Method', 'Status']
 
       const drawTableHeader = (y) => {
         doc.rect(tableLeft, y, tableWidth, tableHeaderHeight).fill(headerBg)
         doc.fontSize(6).fillColor('#FFFFFF').font('Helvetica-Bold')
         let xPos = tableLeft + 2
         headers.forEach((header, i) => {
-          const align = i >= 5 ? 'right' : 'left'
+          const align = i >= 8 ? 'right' : 'left' // Weight, Total, Paid alineados a la derecha
           doc.text(header, xPos, y + 4, { width: colWidths[i] - 4, align })
           xPos += colWidths[i]
         })
@@ -403,32 +405,23 @@ export const generatePdf = async (filters = {}) => {
 
       // ========== RENDER ==========
       let yPos = drawMainHeader()
-      const tableTopY = yPos;          // <-- real
+      const tableTopY = yPos
 
-      yPos = drawTableHeader(yPos);
+      yPos = drawTableHeader(yPos)
 
-
-      const footerGap = 8;                 // espacio entre tabla y footer
-      const bottomLimit = footerY - footerGap;
-
+      const footerGap = 8
+      const bottomLimit = footerY - footerGap
 
       while (rowIndex < transactions.length) {
         const row = transactions[rowIndex]
 
-        // if (yPos + rowHeight > pageHeight - footerHeight) {
-        //   drawFooter()
-        //   doc.addPage()
-        //   currentPage++
-        //   yPos = drawSimpleHeader()
-        //   yPos = drawTableHeader(yPos)
-        // }
         if (yPos + rowHeight > bottomLimit) {
-          drawFooter();
-          doc.addPage();
-          currentPage++;
-          yPos = drawSimpleHeader();
-          yPos = drawTableHeader(yPos);
-          continue;
+          drawFooter()
+          doc.addPage()
+          currentPage++
+          yPos = drawSimpleHeader()
+          yPos = drawTableHeader(yPos)
+          continue
         }
 
         // Fondo alternado
@@ -439,15 +432,17 @@ export const generatePdf = async (filters = {}) => {
         const driverName = [row.driver_first_name, row.driver_last_name].filter(Boolean).join(' ') || '-'
         const statusColor = getStatusColor(row.sale_status_code)
 
+        // Nuevo orden de datos (sin Subtotal y Tax, con nuevas columnas)
         const rowData = [
           row.ticket_number || '-',
           row.product_type || '-',
           formatDateTime(row.sale_date),
-          driverName.length > 15 ? driverName.substring(0, 15) + '...' : driverName,
+          driverName.length > 12 ? driverName.substring(0, 12) + '...' : driverName,
+          row.trailer_number || '-',
+          row.tractor_number || '-',
+          row.operator_name ? (row.operator_name.length > 10 ? row.operator_name.substring(0, 10) + '...' : row.operator_name) : '-',
           row.vehicle_plates || '-',
           formatNumber(row.gross_weight),
-          formatCurrency(row.subtotal),
-          formatCurrency(row.tax_amount),
           formatCurrency(row.total_amount),
           formatCurrency(row.amount_paid),
           row.payment_method || '-',
@@ -457,15 +452,19 @@ export const generatePdf = async (filters = {}) => {
         doc.fontSize(5.5).font('Helvetica')
         let xPos = tableLeft + 2
         rowData.forEach((cell, i) => {
-          if (i === 11) {
+          // Status (última columna)
+          if (i === 12) {
             doc.fillColor(statusColor).font('Helvetica-Bold')
-          } else if (i === 1) {
+          }
+          // Service (columna 1)
+          else if (i === 1) {
             const typeColor = cell === 'Weigh' ? '#17a2b8' : '#6f42c1'
             doc.fillColor(typeColor).font('Helvetica-Bold')
-          } else {
+          }
+          else {
             doc.fillColor('#333333').font('Helvetica')
           }
-          const align = i >= 5 ? 'right' : 'left'
+          const align = i >= 8 && i <= 10 ? 'right' : 'left' // Weight, Total, Paid
           doc.text(String(cell), xPos, yPos + 3, { width: colWidths[i] - 4, align })
           xPos += colWidths[i]
         })
@@ -476,7 +475,7 @@ export const generatePdf = async (filters = {}) => {
 
       // Borde tabla
       doc.rect(tableLeft, tableTopY, tableWidth, yPos - tableTopY)
-  .strokeColor('#CCCCCC').lineWidth(0.5).stroke();
+        .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
 
       drawFooter()
       doc.end()
@@ -488,6 +487,11 @@ export const generatePdf = async (filters = {}) => {
 
 /**
  * Generar Excel
+ * MODIFICADO:
+ * - Agregada fila con Company Name | Address | Phone
+ * - Cambiado "Type" por "Service"
+ * - Agregadas columnas: Driver, Trailer #, Tractor #, Scale Op
+ * - Quitadas columnas: Subtotal y Tax
  */
 export const generateExcel = async (filters = {}) => {
   const { transactions, totals } = await getData(filters)
@@ -503,91 +507,99 @@ export const generateExcel = async (filters = {}) => {
     pageSetup: { paperSize: 9, orientation: 'landscape' }
   })
 
-  // ========== HEADER ==========
-  worksheet.mergeCells('A1:L1')
+  // ========== HEADER (A..M = 13 columnas) ==========
+  
+  // Fila 1: Company Name
+  worksheet.mergeCells('A1:M1')
   worksheet.getCell('A1').value = settings.companyName
   worksheet.getCell('A1').font = { size: 16, bold: true, color: { argb: '17A2B8' } }
   worksheet.getCell('A1').alignment = { horizontal: 'center' }
 
-  worksheet.mergeCells('A2:L2')
+  // Fila 2: Cash Sales Report
+  worksheet.mergeCells('A2:M2')
   worksheet.getCell('A2').value = 'Cash Sales Report'
   worksheet.getCell('A2').font = { size: 12, bold: true }
   worksheet.getCell('A2').alignment = { horizontal: 'center' }
 
+  // Fila 3: Generated + Date Range
+  const fmtShort = (v) => v ? String(v).slice(0, 10) : ''
+  const dateRange = [
+    filters.date_from ? `From: ${fmtShort(filters.date_from)}` : '',
+    filters.date_to ? `To: ${fmtShort(filters.date_to)}` : ''
+  ].filter(Boolean).join(' | ') || 'All time'
 
-
-
-  const fmtShort = (v) => v ? String(v).slice(0, 10) : ''; // YYYY-MM-DD si viene ISO o date string
-
- const dateRange = [
-  filters.date_from ? `From: ${fmtShort(filters.date_from)}` : '',
-  filters.date_to   ? `To: ${fmtShort(filters.date_to)}`     : ''
-].filter(Boolean).join(' | ') || 'All time';
-
-
-  worksheet.mergeCells('A3:L3')
+  worksheet.mergeCells('A3:M3')
   worksheet.getCell('A3').value = `Generated: ${new Date().toLocaleString('en-US')} | ${dateRange}`
   worksheet.getCell('A3').font = { size: 9, italic: true, color: { argb: '666666' } }
   worksheet.getCell('A3').alignment = { horizontal: 'center' }
 
-  worksheet.addRow([])
+  // Fila 4: Company Name | Address | Phone (NUEVA)
+  worksheet.mergeCells('A4:M4')
+  const companyInfoLine = [
+    settings.companyName || '',
+    settings.companyAddress || '',
+    settings.companyPhone || ''
+  ].filter(Boolean).join(' | ')
+  worksheet.getCell('A4').value = companyInfoLine
+  worksheet.getCell('A4').font = { size: 9, color: { argb: '333333' } }
+  worksheet.getCell('A4').alignment = { horizontal: 'center' }
 
-  // ========== SUMMARY ==========
-  worksheet.mergeCells('A5:L5')
-  const summHeader = worksheet.getCell('A5')
+  worksheet.addRow([]) // Fila 5 vacía
+
+  // ========== SUMMARY (ahora empieza en fila 6) ==========
+  worksheet.mergeCells('A6:M6')
+  const summHeader = worksheet.getCell('A6')
   summHeader.value = 'Summary'
   summHeader.font = { bold: true, color: { argb: 'FFFFFF' } }
   summHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '138496' } }
 
-  worksheet.getCell('A6').value = 'Total Transactions:'
-  worksheet.getCell('B6').value = totals.total_transactions
-  worksheet.getCell('C6').value = 'Weigh:'
-  worksheet.getCell('D6').value = totals.total_weigh
-  worksheet.getCell('E6').value = 'Reweigh:'
-  worksheet.getCell('F6').value = totals.total_reweigh
+  worksheet.getCell('A7').value = 'Total Transactions:'
+  worksheet.getCell('B7').value = totals.total_transactions
+  worksheet.getCell('C7').value = 'Weigh:'
+  worksheet.getCell('D7').value = totals.total_weigh
+  worksheet.getCell('E7').value = 'Reweigh:'
+  worksheet.getCell('F7').value = totals.total_reweigh
 
-  worksheet.getCell('A7').value = 'Completed:'
-  worksheet.getCell('B7').value = totals.count_completed
-  worksheet.getCell('B7').font = { color: { argb: '28A745' } }
-  worksheet.getCell('C7').value = 'Pending:'
-  worksheet.getCell('D7').value = totals.count_open
-  worksheet.getCell('D7').font = { color: { argb: 'FFC107' } }
-  worksheet.getCell('E7').value = 'Cancelled:'
-  worksheet.getCell('F7').value = totals.count_cancelled
-  worksheet.getCell('F7').font = { color: { argb: 'DC3545' } }
+  worksheet.getCell('A8').value = 'Completed:'
+  worksheet.getCell('B8').value = totals.count_completed
+  worksheet.getCell('B8').font = { color: { argb: '28A745' } }
+  worksheet.getCell('C8').value = 'Pending:'
+  worksheet.getCell('D8').value = totals.count_open
+  worksheet.getCell('D8').font = { color: { argb: 'FFC107' } }
+  worksheet.getCell('E8').value = 'Cancelled:'
+  worksheet.getCell('F8').value = totals.count_cancelled
+  worksheet.getCell('F8').font = { color: { argb: 'DC3545' } }
 
-  worksheet.getCell('A8').value = 'Total Weight:'
-  worksheet.getCell('B8').value = totals.total_weight
-  worksheet.getCell('B8').numFmt = '#,##0.00'
-  worksheet.getCell('C8').value = 'Subtotal:'
-  worksheet.getCell('D8').value = totals.total_subtotal
-  worksheet.getCell('D8').numFmt = '"$"#,##0.00'
-  worksheet.getCell('E8').value = 'Tax:'
-  worksheet.getCell('F8').value = totals.total_tax
-  worksheet.getCell('F8').numFmt = '"$"#,##0.00'
-  worksheet.getCell('G8').value = 'Total:'
-  worksheet.getCell('G8').font = { bold: true }
-  worksheet.getCell('H8').value = totals.total_amount
-  worksheet.getCell('H8').numFmt = '"$"#,##0.00'
-  worksheet.getCell('H8').font = { bold: true }
-  worksheet.getCell('I8').value = 'Paid:'
-  worksheet.getCell('J8').value = totals.total_paid
-  worksheet.getCell('J8').numFmt = '"$"#,##0.00'
-  worksheet.getCell('J8').font = { color: { argb: '28A745' } }
-  worksheet.getCell('K8').value = 'Pending:'
-  worksheet.getCell('L8').value = totals.total_pending
-  worksheet.getCell('L8').numFmt = '"$"#,##0.00'
-  worksheet.getCell('L8').font = { color: { argb: 'DC3545' } }
+  // Totales financieros (sin Subtotal y Tax detallados, solo Total)
+  worksheet.getCell('A9').value = 'Total Weight:'
+  worksheet.getCell('B9').value = totals.total_weight
+  worksheet.getCell('B9').numFmt = '#,##0.00'
+  worksheet.getCell('C9').value = 'Total:'
+  worksheet.getCell('C9').font = { bold: true }
+  worksheet.getCell('D9').value = totals.total_amount
+  worksheet.getCell('D9').numFmt = '"$"#,##0.00'
+  worksheet.getCell('D9').font = { bold: true }
+  worksheet.getCell('E9').value = 'Paid:'
+  worksheet.getCell('F9').value = totals.total_paid
+  worksheet.getCell('F9').numFmt = '"$"#,##0.00'
+  worksheet.getCell('F9').font = { color: { argb: '28A745' } }
+  worksheet.getCell('G9').value = 'Pending:'
+  worksheet.getCell('H9').value = totals.total_pending
+  worksheet.getCell('H9').numFmt = '"$"#,##0.00'
+  worksheet.getCell('H9').font = { color: { argb: 'DC3545' } }
 
-  worksheet.addRow([])
+  worksheet.addRow([]) // Fila 10 vacía
 
-  // ========== TABLE ==========
-  const tableStartRow = 10
+  // ========== TABLE (empieza en fila 11) ==========
+  const tableStartRow = 11
 
-  const colWidths = [14, 10, 18, 18, 12, 12, 12, 10, 12, 12, 14, 12]
+  // Anchos de columna (13 columnas)
+  // Orden: Ticket #, Service, Date, Driver, Trailer #, Tractor #, Scale Op, Plates, Weight, Total, Paid, Method, Status
+  const colWidths = [14, 10, 18, 18, 12, 12, 16, 12, 12, 12, 12, 14, 12]
   colWidths.forEach((w, i) => worksheet.getColumn(i + 1).width = w)
 
-  const headers = ['Ticket #', 'Type', 'Date', 'Driver', 'Plates', 'Weight', 'Subtotal', 'Tax', 'Total', 'Paid', 'Method', 'Status']
+  // Headers
+  const headers = ['Ticket #', 'Service', 'Date', 'Driver', 'Trailer #', 'Tractor #', 'Scale Op', 'Plates', 'Weight', 'Total', 'Paid', 'Method', 'Status']
   headers.forEach((h, i) => {
     const cell = worksheet.getCell(tableStartRow, i + 1)
     cell.value = h
@@ -602,6 +614,7 @@ export const generateExcel = async (filters = {}) => {
     }
   })
 
+  // Data rows
   let currentRow = tableStartRow + 1
   transactions.forEach((row, index) => {
     const driverName = [row.driver_first_name, row.driver_last_name].filter(Boolean).join(' ') || '-'
@@ -609,29 +622,33 @@ export const generateExcel = async (filters = {}) => {
       row.sale_status_code === 'COMPLETED' ? '28A745' :
         row.sale_status_code === 'OPEN' ? 'FFC107' : '666666'
 
+    // Nuevo orden de datos (sin Subtotal y Tax)
     const rowData = [
-      row.ticket_number || '-',
-      row.product_type || '-',
-      formatDate(row.sale_date),
-      driverName,
-      row.vehicle_plates || '-',
-      parseFloat(row.gross_weight) || 0,
-      parseFloat(row.subtotal) || 0,
-      parseFloat(row.tax_amount) || 0,
-      parseFloat(row.total_amount) || 0,
-      parseFloat(row.amount_paid) || 0,
-      row.payment_method || '-',
-      row.sale_status_label || '-'
+      row.ticket_number || '-',                    // A: Ticket #
+      row.product_type || '-',                     // B: Service
+      formatDate(row.sale_date),                   // C: Date
+      driverName,                                  // D: Driver
+      row.trailer_number || '-',                   // E: Trailer #
+      row.tractor_number || '-',                   // F: Tractor #
+      row.operator_name || '-',                    // G: Scale Op
+      row.vehicle_plates || '-',                   // H: Plates
+      parseFloat(row.gross_weight) || 0,           // I: Weight
+      parseFloat(row.total_amount) || 0,           // J: Total
+      parseFloat(row.amount_paid) || 0,            // K: Paid
+      row.payment_method || '-',                   // L: Method
+      row.sale_status_label || '-'                 // M: Status
     ]
 
     rowData.forEach((value, colIndex) => {
       const cell = worksheet.getCell(currentRow, colIndex + 1)
       cell.value = value
 
+      // Fondo alternado
       if (index % 2 === 0) {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F2F2F2' } }
       }
 
+      // Bordes
       cell.border = {
         top: { style: 'thin', color: { argb: 'CCCCCC' } },
         left: { style: 'thin', color: { argb: 'CCCCCC' } },
@@ -639,20 +656,26 @@ export const generateExcel = async (filters = {}) => {
         right: { style: 'thin', color: { argb: 'CCCCCC' } }
       }
 
-      // Formatos
-      if (colIndex >= 6 && colIndex <= 9) {
+      // Formato currency para Total y Paid (columnas J=9 y K=10)
+      if (colIndex === 9 || colIndex === 10) {
         cell.numFmt = '"$"#,##0.00'
         cell.alignment = { horizontal: 'right' }
       }
-      if (colIndex === 5) {
+
+      // Formato número para Weight (columna I=8)
+      if (colIndex === 8) {
         cell.numFmt = '#,##0.00'
         cell.alignment = { horizontal: 'right' }
       }
+
+      // Color para Service (columna B=1)
       if (colIndex === 1) {
         const typeColor = value === 'Weigh' ? '17A2B8' : '6F42C1'
         cell.font = { bold: true, color: { argb: typeColor } }
       }
-      if (colIndex === 11) {
+
+      // Color para Status (columna M=12)
+      if (colIndex === 12) {
         cell.font = { bold: true, color: { argb: statusColor } }
         cell.alignment = { horizontal: 'center' }
       }

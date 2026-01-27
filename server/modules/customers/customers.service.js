@@ -3,17 +3,14 @@ import { NotFoundError, ConflictError } from '../../utils/errors.js'
 
 // =============================================
 // CONFIGURACIÓN DE PREFIJO PARA ACCOUNT NUMBER
-// Cambiar aquí si piden quitar o modificar el prefijo
 // =============================================
-const ACCOUNT_PREFIX = 'ACC-'  // Cambiar a '' si quieren sin prefijo
-const ACCOUNT_PAD_LENGTH = 1   // Cantidad de dígitos: 0001, 00001, etc.
+const ACCOUNT_PREFIX = 'ACC-'
+const ACCOUNT_PAD_LENGTH = 1
 
 /**
  * Genera el siguiente account_number automáticamente
- * Formato: ACC-0001, ACC-0002, etc.
  */
 const generateAccountNumber = async () => {
-  // Obtener el último número usado
   const result = await query(`
     SELECT account_number 
     FROM customers 
@@ -25,7 +22,6 @@ const generateAccountNumber = async () => {
   let nextNumber = 1
 
   if (result.length > 0) {
-    // Extraer el número del último account_number
     const lastAccount = result[0].account_number
     const numericPart = lastAccount.replace(ACCOUNT_PREFIX, '')
     const parsed = parseInt(numericPart, 10)
@@ -34,7 +30,6 @@ const generateAccountNumber = async () => {
     }
   }
 
-  // Formatear con padding: 1 -> "0001"
   const paddedNumber = String(nextNumber).padStart(ACCOUNT_PAD_LENGTH, '0')
   return `${ACCOUNT_PREFIX}${paddedNumber}`
 }
@@ -48,6 +43,7 @@ export const getAll = async (includeInactive = false) => {
       cc.current_balance,
       cc.available_credit,
       cc.is_suspended,
+      cc.suspension_reason,
       creator.username AS created_by_username,
       editor.username AS edited_by_username
     FROM customers c
@@ -85,7 +81,6 @@ export const getById = async (id) => {
   
   if (items.length === 0) throw new NotFoundError('Customer not found')
 
-  // Contar transacciones
   const usage = await query(
     `SELECT COUNT(*) as count FROM sale_driver_info WHERE account_number = ?`,
     [items[0].account_number]
@@ -109,7 +104,6 @@ export const create = async (data, currentUserId = null) => {
     credit 
   } = data
 
-  // Generar account_number automáticamente
   const account_number = await generateAccountNumber()
 
   const result = await query(
@@ -120,12 +114,21 @@ export const create = async (data, currentUserId = null) => {
 
   const customerId = result.insertId
 
-  // Crear registro de crédito si aplica
+  // Crear registro de crédito si aplica (incluyendo is_suspended y suspension_reason)
   if (has_credit && credit) {
     await query(
-      `INSERT INTO customer_credit (customer_id, credit_type, credit_limit, current_balance, available_credit, payment_terms_days)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [customerId, credit.credit_type || 'POSTPAID', credit.credit_limit || 0, 0, credit.credit_limit || 0, credit.payment_terms_days || 30]
+      `INSERT INTO customer_credit (customer_id, credit_type, credit_limit, current_balance, available_credit, payment_terms_days, is_suspended, suspension_reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        customerId, 
+        credit.credit_type || 'POSTPAID', 
+        credit.credit_limit || 0, 
+        0, 
+        credit.credit_limit || 0, 
+        credit.payment_terms_days || 30,
+        credit.is_suspended ? 1 : 0,
+        credit.is_suspended ? (credit.suspension_reason || null) : null
+      ]
     )
   }
 
@@ -149,7 +152,6 @@ export const update = async (id, data, currentUserId = null) => {
   const existing = await query('SELECT * FROM customers WHERE id_customer = ?', [id])
   if (existing.length === 0) throw new NotFoundError('Customer not found')
 
-  // account_number NO se actualiza, se mantiene el original
   await query(
     `UPDATE customers 
      SET account_name = ?, account_address = ?, city = ?, account_country = ?, account_state = ?, phone_number = ?, tax_id = ?, has_credit = ?, is_active = ?, edited_by_user = ?, updated_at = NOW()
@@ -169,18 +171,41 @@ export const update = async (id, data, currentUserId = null) => {
     ]
   )
 
-  // Actualizar crédito
+  // Actualizar crédito (incluyendo is_suspended y suspension_reason)
   if (has_credit && credit) {
     const existingCredit = await query('SELECT credit_id FROM customer_credit WHERE customer_id = ?', [id])
     if (existingCredit.length > 0) {
       await query(
-        `UPDATE customer_credit SET credit_type = ?, credit_limit = ?, payment_terms_days = ?, updated_at = NOW() WHERE customer_id = ?`,
-        [credit.credit_type || 'POSTPAID', credit.credit_limit || 0, credit.payment_terms_days || 30, id]
+        `UPDATE customer_credit 
+         SET credit_type = ?, 
+             credit_limit = ?, 
+             payment_terms_days = ?, 
+             is_suspended = ?, 
+             suspension_reason = ?,
+             updated_at = NOW() 
+         WHERE customer_id = ?`,
+        [
+          credit.credit_type || 'POSTPAID', 
+          credit.credit_limit || 0, 
+          credit.payment_terms_days || 30,
+          credit.is_suspended ? 1 : 0,
+          credit.is_suspended ? (credit.suspension_reason || null) : null,
+          id
+        ]
       )
     } else {
       await query(
-        `INSERT INTO customer_credit (customer_id, credit_type, credit_limit, available_credit, payment_terms_days) VALUES (?, ?, ?, ?, ?)`,
-        [id, credit.credit_type || 'POSTPAID', credit.credit_limit || 0, credit.credit_limit || 0, credit.payment_terms_days || 30]
+        `INSERT INTO customer_credit (customer_id, credit_type, credit_limit, available_credit, payment_terms_days, is_suspended, suspension_reason) 
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id, 
+          credit.credit_type || 'POSTPAID', 
+          credit.credit_limit || 0, 
+          credit.credit_limit || 0, 
+          credit.payment_terms_days || 30,
+          credit.is_suspended ? 1 : 0,
+          credit.is_suspended ? (credit.suspension_reason || null) : null
+        ]
       )
     }
   }

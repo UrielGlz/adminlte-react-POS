@@ -21,7 +21,13 @@ function CustomerForm() {
     tax_id: '',
     has_credit: false, 
     is_active: true,
-    credit: { credit_type: 'POSTPAID', credit_limit: 0, payment_terms_days: 30 }
+    credit: { 
+      credit_type: 'POSTPAID', 
+      credit_limit: 0, 
+      payment_terms_days: 30,
+      is_suspended: false,
+      suspension_reason: ''
+    }
   })
   const [auditInfo, setAuditInfo] = useState(null)
 
@@ -48,7 +54,9 @@ function CustomerForm() {
         credit: {
           credit_type: item.credit_type || 'POSTPAID',
           credit_limit: item.credit_limit || 0,
-          payment_terms_days: item.payment_terms_days || 30
+          payment_terms_days: item.payment_terms_days || 30,
+          is_suspended: item.is_suspended === 1,
+          suspension_reason: item.suspension_reason || ''
         }
       })
       setAuditInfo({
@@ -67,10 +75,29 @@ function CustomerForm() {
     const { name, value, type, checked } = e.target
     if (name.startsWith('credit_')) {
       const field = name.replace('credit_', '')
-      setFormData(prev => ({ ...prev, credit: { ...prev.credit, [field]: value } }))
+      setFormData(prev => ({ 
+        ...prev, 
+        credit: { 
+          ...prev.credit, 
+          [field]: type === 'checkbox' ? checked : value 
+        } 
+      }))
     } else {
       setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }))
     }
+  }
+
+  // Limpiar suspension_reason cuando se desactiva is_suspended
+  const handleSuspendedChange = (e) => {
+    const { checked } = e.target
+    setFormData(prev => ({
+      ...prev,
+      credit: {
+        ...prev.credit,
+        is_suspended: checked,
+        suspension_reason: checked ? prev.credit.suspension_reason : ''
+      }
+    }))
   }
 
   const handleSubmit = async (e) => {
@@ -79,11 +106,21 @@ function CustomerForm() {
       Swal.fire('Validation', 'Account name is required', 'warning')
       return
     }
+
+    // Validar que si está suspendido, tenga una razón
+    if (formData.has_credit && formData.credit.is_suspended && !formData.credit.suspension_reason.trim()) {
+      Swal.fire('Validation', 'Please provide a suspension reason', 'warning')
+      return
+    }
+
     try {
       setSaving(true)
       const payload = { 
         ...formData, 
-        credit: formData.has_credit ? { ...formData.credit, credit_limit: parseFloat(formData.credit.credit_limit) || 0 } : null 
+        credit: formData.has_credit ? { 
+          ...formData.credit, 
+          credit_limit: parseFloat(formData.credit.credit_limit) || 0 
+        } : null 
       }
       // No enviar account_number en create (se genera automáticamente)
       if (!isEditing) delete payload.account_number
@@ -98,11 +135,10 @@ function CustomerForm() {
     } finally { setSaving(false) }
   }
 
-   const formatDate = (date) => {
+  const formatDate = (date) => {
     if (!date) return '-'
     return new Date(date).toLocaleString('en-US', {
-      timeZone: 'America/Matamoros', // Reynosa (frontera)
-      // si prefieres Texas: 'America/Chicago'
+      timeZone: 'America/Matamoros',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
@@ -323,6 +359,65 @@ function CustomerForm() {
                     />
                     <span className="input-group-text">days</span>
                   </div>
+                </div>
+              </div>
+
+              {/* Suspension Section - NUEVO */}
+              <div className="row mt-3 pt-3 border-top">
+                <div className="col-12">
+                  <div className="d-flex align-items-start">
+                    {/* Suspended Toggle */}
+                    <div className="form-check form-switch me-4">
+                      <input 
+                        className="form-check-input" 
+                        type="checkbox" 
+                        name="credit_is_suspended" 
+                        id="credit_is_suspended"
+                        checked={formData.credit.is_suspended} 
+                        onChange={handleSuspendedChange}
+                        style={{ width: '3em', height: '1.5em' }}
+                      />
+                      <label className="form-check-label ms-2" htmlFor="credit_is_suspended">
+                        {formData.credit.is_suspended ? (
+                          <span className="text-danger fw-semibold">
+                            <i className="bi bi-exclamation-triangle-fill me-1"></i>
+                            Account Suspended
+                          </span>
+                        ) : (
+                          <span className="text-success fw-semibold">
+                            <i className="bi bi-check-circle me-1"></i>
+                            Account Active
+                          </span>
+                        )}
+                      </label>
+                    </div>
+
+                    {/* Suspension Reason - solo visible si está suspendido */}
+                    {formData.credit.is_suspended && (
+                      <div className="flex-grow-1">
+                        <label className="form-label text-danger">
+                          Suspension Reason <span className="text-danger">*</span>
+                        </label>
+                        <input 
+                          type="text" 
+                          className="form-control border-danger" 
+                          name="credit_suspension_reason" 
+                          value={formData.credit.suspension_reason} 
+                          onChange={handleChange}
+                          placeholder="e.g., Overdue payments, Credit limit exceeded..."
+                          required
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Warning Alert cuando está suspendido */}
+                  {formData.credit.is_suspended && (
+                    <div className="alert alert-danger mt-3 mb-0">
+                      <i className="bi bi-exclamation-triangle-fill me-2"></i>
+                      <strong>Warning:</strong> This account is suspended. The customer will not be able to use their credit account at the POS until the suspension is lifted.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

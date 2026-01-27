@@ -20,6 +20,7 @@ function SaleDetail() {
       setLoading(true)
       const response = await api.get(`/sales/${id}`)
       setSale(response.data.data)
+      console.log(response.data.data)
     } catch (error) {
       Swal.fire('Error', 'Could not load sale', 'error')
       navigate('/sales')
@@ -271,9 +272,14 @@ function SaleDetail() {
             <div className="card-header"><h6 className="mb-0">Details</h6></div>
             <div className="card-body small">
               <p className="mb-1"><b>Operator:</b> {sale.operator_name}</p>
-              <p className="mb-1"><b>Terminal:</b> {sale.terminal_id}</p>
-              <p className="mb-1"><b>Site:</b> {sale.site_id}</p>
+             
+              {/* <p className="mb-1"><b>Terminal:</b> {sale.terminal_id}</p>
+              <p className="mb-1"><b>Site:</b> {sale.site_id}</p> */}
               <p className="mb-0"><b>UID:</b> <code className="small">{sale.sale_uid}</code></p>
+              <p className="mb-1"><b>Update by:</b> {sale.operator_name}</p>
+              <p className="mb-1"><b>Update date:</b> {formatDate(sale.updated_at)}</p>
+
+
             </div>
           </div>
         </div>

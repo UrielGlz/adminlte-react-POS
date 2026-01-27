@@ -451,7 +451,7 @@ function CustomerStatement() {
                     <thead className="table-dark sticky-top">
                       <tr>
                         <th>Ticket #</th>
-                        <th>Type</th>
+                        <th>Service</th>
                         <th>Date</th>
                         <th>Driver</th>
                         <th>Plates</th>

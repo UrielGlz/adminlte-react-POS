@@ -38,9 +38,9 @@ function Login() {
           <div className="card-header bg-primary text-white text-center py-4 border-0">
             <h3 className="mb-1 fw-bold">
               <i className="bi bi-shield-lock me-2"></i>
-              AdminLTE
+                Admin MFTZ
             </h3>
-            <small className="opacity-75">Enterprise Management System</small>
+            {/* <small className="opacity-75">Enterprise Management System</small> */}
           </div>
 
           <div className="card-body p-4">

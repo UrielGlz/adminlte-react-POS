@@ -50,7 +50,7 @@ function Sidebar() {
     const result = []
     for (let i = 0; i < withFilteredTrees.length; i++) {
       const current = withFilteredTrees[i]
-      
+
       if (current.type === 'header') {
         // Buscar si hay al menos un item visible después de este header
         // antes del siguiente header o del final
@@ -64,7 +64,7 @@ function Sidebar() {
           hasVisibleContent = true
           break
         }
-        
+
         if (hasVisibleContent) {
           result.push(current)
         }
@@ -81,7 +81,7 @@ function Sidebar() {
     const newOpenMenus = {}
     navigation.forEach(item => {
       if (item.type === 'tree' && item.children) {
-        const isChildActive = item.children.some(child => 
+        const isChildActive = item.children.some(child =>
           location.pathname === child.to || location.pathname.startsWith(child.to + '/')
         )
         if (isChildActive) {
@@ -122,8 +122,8 @@ function Sidebar() {
       case 'tree':
         const isOpen = openMenus[item.id]
         return (
-          <li key={item.id} className={`nav-item ${isOpen ? 'menu-open' : ''}`}>            
-             <a href="#"
+          <li key={item.id} className={`nav-item ${isOpen ? 'menu-open' : ''}`}>
+            <a href="#"
               className={`nav-link ${isOpen ? 'active' : ''}`}
               onClick={(e) => toggleMenu(item.id, e)}
             >
@@ -157,11 +157,12 @@ function Sidebar() {
       <div className="sidebar-brand">
         <Link to="/" className="brand-link">
           <img
-            src="https://adminlte.io/themes/v3/dist/img/AdminLTELogo.png"
+            src={`${import.meta.env.BASE_URL}img/logo_MFTZ.png`}
             alt="Logo"
             className="brand-image opacity-75 shadow"
           />
-          <span className="brand-text fw-light">AdminLTE React</span>
+
+          {/* <span className="brand-text fw-light">AdminLTE React</span> */}
         </Link>
       </div>
 

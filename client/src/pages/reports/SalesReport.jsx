@@ -291,7 +291,7 @@ function SalesReport() {
           <div className="col">
             <div className="card bg-success text-white">
               <div className="card-body py-3 text-center">
-                <h5 className="mb-0">{formatCurrency(totals.total_amount)}</h5>
+                <h4 className="mb-0">{formatCurrency(totals.total_amount)}</h4>
                 <small>Total</small>
               </div>
             </div>

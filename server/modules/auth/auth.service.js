@@ -63,21 +63,21 @@ export const login = async (username, password, ipAddress, userAgent) => {
   )
 
   if (users.length === 0) {
-    throw new UnauthorizedError('Credenciales inválidas')
+    throw new UnauthorizedError('Invalid credentials')
   }
 
   const user = users[0]
 
   // 2. Verificar que está activo
   if (!user.is_active) {
-    throw new UnauthorizedError('Usuario desactivado')
+    throw new UnauthorizedError('Account is disabled')
   }
 
   // 3. Verificar password
   const validPassword = await verifyPassword(password, user.password_hash, user.password_algo)
   
   if (!validPassword) {
-    throw new UnauthorizedError('Credenciales inválidas')
+    throw new UnauthorizedError('Invalid credentials')
   }
 
   // 4. Obtener permisos del rol
@@ -139,7 +139,7 @@ export const getMe = async (userId) => {
   )
 
   if (users.length === 0) {
-    throw new NotFoundError('Usuario no encontrado')
+    throw new NotFoundError('User not found')
   }
 
   const user = users[0]
@@ -185,14 +185,14 @@ export const refresh = async (refreshToken, ipAddress, userAgent) => {
   )
 
   if (tokens.length === 0) {
-    throw new UnauthorizedError('Refresh token inválido o expirado')
+    throw new UnauthorizedError('Invalid or expired refresh token')
   }
 
   const tokenData = tokens[0]
 
   // 2. Verificar usuario activo
   if (!tokenData.is_active) {
-    throw new UnauthorizedError('Usuario desactivado')
+    throw new UnauthorizedError('Account is disabled')
   }
 
   // 3. Obtener permisos

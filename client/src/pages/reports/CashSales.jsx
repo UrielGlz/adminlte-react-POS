@@ -396,14 +396,16 @@ function CashSales() {
                   <thead className="table-dark sticky-top">
                     <tr>
                       <th>Ticket #</th>
-                      <th>Type</th>
+                      <th>Service</th>
                       <th>Date</th>
                       <th>Driver</th>
-                      <th>Phone</th>
+                      <th>Triler #</th>
+                      <th>Tractor #</th>
+                      <th>Scale Op</th>
                       <th>Plates</th>
                       <th className="text-end">Weight</th>
-                      <th className="text-end">Subtotal</th>
-                      <th className="text-end">Tax</th>
+                      {/* <th className="text-end">Subtotal</th> */}
+                      {/* <th className="text-end">Tax</th> */}
                       <th className="text-end">Total</th>
                       <th className="text-end">Paid</th>
                       <th>Method</th>
@@ -422,13 +424,19 @@ function CashSales() {
                             {row.product_type}
                           </span>
                         </td>
-                        <td className="small">{formatDate(row.sale_date)}</td>
+                        <td className="small">{formatDate(row.sale_date)}</td>                        
                         <td>{row.driver_first_name} {row.driver_last_name}</td>
-                        <td className="small">{row.driver_phone || '-'}</td>
-                        <td>{row.vehicle_plates || '-'}</td>
+
+                        <td className="small">{row.trailer_number}</td>
+                        <td className="small">{row.tractor_number}</td>
+                        <td className="small">{row.operator_name}</td>
+                        <td className="small">{row.vehicle_plates}</td>
+
+                        {/* <td className="small">{row.driver_phone || '-'}</td> */}
+                        {/* <td>{row.vehicle_plates || '-'}</td> */}
                         <td className="text-end">{formatNumber(row.gross_weight)}</td>
-                        <td className="text-end">{formatCurrency(row.subtotal)}</td>
-                        <td className="text-end">{formatCurrency(row.tax_amount)}</td>
+                        {/* <td className="text-end">{formatCurrency(row.subtotal)}</td> */}
+                        {/* <td className="text-end">{formatCurrency(row.tax_amount)}</td> */}
                         <td className="text-end fw-bold">{formatCurrency(row.total_amount)}</td>
                         <td className="text-end">{formatCurrency(row.amount_paid)}</td>
                         <td>{row.payment_method || '-'}</td>

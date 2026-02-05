@@ -288,13 +288,23 @@ export const getPaymentHistory = async (customerId) => {
  * Get payment detail
  */
 export const getPaymentDetail = async (arPaymentId) => {
-  const detail = await ArModel.getPaymentDetail(arPaymentId)
-  if (!detail) {
+  const data = await ArModel.getPaymentDetail(arPaymentId)
+  if (!data) {
     throw new NotFoundError('A/R Payment not found')
+  }
+  return data
+}
+/**
+ * Get all payment history with filters and pagination
+ */
+export const getAllPaymentHistory = async (filters) => {
+  const detail = await ArModel.getAllPaymentHistory(filters)
+  console.log(detail);
+  if (!detail) {
+    throw new NotFoundError('A/R Payment History not found')
   }
   return detail
 }
-
 export default {
   getCustomersWithCredit,
   getCustomerSummary,
@@ -302,5 +312,6 @@ export default {
   getPaymentMethods,
   applyPayment,
   getPaymentHistory,
-  getPaymentDetail
+  getPaymentDetail,
+  getAllPaymentHistory
 }

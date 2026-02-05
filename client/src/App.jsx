@@ -39,6 +39,7 @@ import CashSales from './pages/reports/CashSales'
 import AccountsReceivable from './pages/ar/AccountsReceivable'
 import PaymentHistory from './pages/ar/PaymentHistory'
 import PaymentDetail from './pages/ar/PaymentDetail'
+import AllPaymentsHistory from './pages/ar/AllPaymentsHistory'
 function App() {
   return (
     <AuthProvider>
@@ -112,6 +113,7 @@ function App() {
           <Route path="/ar" element={<AccountsReceivable />} />
           <Route path="/ar/history" element={<PaymentHistory />} />
           <Route path="/ar/payments/:id" element={<PaymentDetail />} />
+          <Route path="/ar/all-payments" element={<AllPaymentsHistory />} />
 
 
         </Route>

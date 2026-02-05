@@ -16,7 +16,8 @@ function CustomerStatement() {
   const [filters, setFilters] = useState({
     customer_id: '',
     date_from: lastMonth,
-    date_to: today
+    date_to: today,
+    include_tickets: '0' // default NO
   })
 
   useEffect(() => {
@@ -70,7 +71,9 @@ function CustomerStatement() {
       setExporting(prev => ({ ...prev, [type]: true }))
       const params = new URLSearchParams()
       Object.entries(filters).forEach(([key, value]) => {
+
         if (value) params.append(key, value)
+          
       })
 
       const response = await api.get(`/reports/customer-statement/${type}?${params}`, {
@@ -217,6 +220,19 @@ function CustomerStatement() {
                 onChange={handleFilterChange}
               />
             </div>
+            <div className="col-md-2">
+              <label className="form-label small">Include Tickets (PDF)</label>
+              <select
+                className="form-select"
+                name="include_tickets"
+                value={filters.include_tickets}
+                onChange={handleFilterChange}
+              >
+                <option value="0">No</option>
+                <option value="1">Yes</option>
+              </select>
+            </div>
+
             <div className="col-md-2">
               <button className="btn btn-primary w-100" onClick={applyFilters}>
                 <i className="bi bi-search me-2"></i>Generate

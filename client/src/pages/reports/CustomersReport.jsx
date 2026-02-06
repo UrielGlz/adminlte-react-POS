@@ -4,6 +4,9 @@ import api from '../../services/api'
 import Swal from 'sweetalert2'
 
 function CustomersReport() {
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
+
   const [data, setData] = useState([])
   const [totals, setTotals] = useState({})
   const [loading, setLoading] = useState(false)
@@ -26,6 +29,8 @@ function CustomersReport() {
       const response = await api.get(`/reports/customers?${params}`)
       setData(response.data.data.data)
       setTotals(response.data.data.totals)
+      setPage(1)
+
     } catch (error) {
       Swal.fire('Error', 'Could not load report data', 'error')
     } finally {
@@ -35,6 +40,8 @@ function CustomersReport() {
 
   const handleFilterChange = (e) => {
     setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }))
+    setPage(1)
+
   }
 
   const applyFilters = () => {
@@ -109,6 +116,14 @@ function CustomersReport() {
     if (!val) return '-'
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val)
   }
+  const totalRows = data.length
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))
+  const safePage = Math.min(Math.max(page, 1), totalPages)
+
+  const start = (safePage - 1) * pageSize
+  const end = start + pageSize
+  const pagedData = data.slice(start, end)
+
 
   return (
     <div className="container-fluid p-4">
@@ -125,8 +140,8 @@ function CustomersReport() {
           <p className="text-muted mb-0">Complete list of customers with status and credit information</p>
         </div>
         <div className="d-flex gap-2">
-          <button 
-            className="btn btn-danger" 
+          <button
+            className="btn btn-danger"
             onClick={exportPdf}
             disabled={exporting.pdf || data.length === 0}
           >
@@ -137,8 +152,8 @@ function CustomersReport() {
             )}
             Export PDF
           </button>
-          <button 
-            className="btn btn-success" 
+          <button
+            className="btn btn-success"
             onClick={exportExcel}
             disabled={exporting.excel || data.length === 0}
           >
@@ -252,7 +267,7 @@ function CustomersReport() {
       <div className="card shadow-sm">
         <div className="card-header bg-light d-flex justify-content-between align-items-center">
           <h6 className="mb-0"><i className="bi bi-table me-2"></i>Preview</h6>
-          <span className="badge bg-secondary">{data.length} records</span>
+          {/* <span className="badge bg-secondary">{data.length} records</span> */}
         </div>
         <div className="card-body p-0">
           {loading ? (
@@ -282,7 +297,7 @@ function CustomersReport() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.map(row => (
+                  {pagedData.map(row => (
                     <tr key={row.id_customer} className={!row.is_active ? 'table-secondary' : ''}>
                       <td><code>{row.account_number}</code></td>
                       <td>{row.account_name}</td>
@@ -311,6 +326,34 @@ function CustomersReport() {
               </table>
             </div>
           )}
+          <div className="d-flex flex-wrap justify-content-between align-items-center p-3 gap-2">
+            <small className="text-muted">
+              Showing <b>{totalRows === 0 ? 0 : start + 1}</b>–<b>{Math.min(end, totalRows)}</b> of <b>{totalRows}</b>
+            </small>
+
+            <div className="d-flex align-items-center gap-2">
+              <select
+                className="form-select form-select-sm"
+                style={{ width: 110 }}
+                value={pageSize}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }}
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+
+              <div className="btn-group">
+                <button className="btn btn-outline-secondary btn-sm" disabled={safePage === 1} onClick={() => setPage(1)}>«</button>
+                <button className="btn btn-outline-secondary btn-sm" disabled={safePage === 1} onClick={() => setPage(safePage - 1)}>‹</button>
+                <button className="btn btn-outline-secondary btn-sm" disabled>{safePage} / {totalPages}</button>
+                <button className="btn btn-outline-secondary btn-sm" disabled={safePage === totalPages} onClick={() => setPage(safePage + 1)}>›</button>
+                <button className="btn btn-outline-secondary btn-sm" disabled={safePage === totalPages} onClick={() => setPage(totalPages)}>»</button>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>

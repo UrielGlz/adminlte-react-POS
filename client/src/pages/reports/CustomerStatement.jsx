@@ -4,6 +4,9 @@ import api from '../../services/api'
 import Swal from 'sweetalert2'
 
 function CustomerStatement() {
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
+
   const [data, setData] = useState({ customer: null, transactions: [], totals: {} })
   const [filterOptions, setFilterOptions] = useState({})
   const [loading, setLoading] = useState(false)
@@ -48,6 +51,8 @@ function CustomerStatement() {
       })
       const response = await api.get(`/reports/customer-statement?${params}`)
       setData(response.data.data)
+      setPage(1)
+
     } catch (error) {
       Swal.fire('Error', 'Could not load report data', 'error')
     } finally {
@@ -57,6 +62,7 @@ function CustomerStatement() {
 
   const handleFilterChange = (e) => {
     setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }))
+    setPage(1)
   }
 
   const applyFilters = () => fetchData()
@@ -73,7 +79,6 @@ function CustomerStatement() {
       Object.entries(filters).forEach(([key, value]) => {
 
         if (value) params.append(key, value)
-          
       })
 
       const response = await api.get(`/reports/customer-statement/${type}?${params}`, {
@@ -140,8 +145,16 @@ function CustomerStatement() {
     if (paymentStatus === 'PENDING') return <span className="badge bg-warning text-dark">Pending</span>
     return <span className="badge bg-secondary">-</span>
   }
+    const { customer, transactions, totals } = data
+  const totalRows = transactions.length
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))
+  const safePage = Math.min(Math.max(page, 1), totalPages)
 
-  const { customer, transactions, totals } = data
+  const start = (safePage - 1) * pageSize
+  const end = start + pageSize
+  const pagedTransactions = transactions.slice(start, end)
+
+
 
   return (
     <div className="container-fluid p-4">
@@ -480,7 +493,7 @@ function CustomerStatement() {
                       </tr>
                     </thead>
                     <tbody>
-                      {transactions.map(row => (
+                      {pagedTransactions.map(row => (
                         <tr key={row.ticket_id}>
                           <td><code>{row.ticket_number}</code></td>
                           <td>
@@ -508,6 +521,34 @@ function CustomerStatement() {
                   </table>
                 </div>
               )}
+              <div className="d-flex flex-wrap justify-content-between align-items-center p-3 gap-2">
+                <small className="text-muted">
+                  Showing <b>{totalRows === 0 ? 0 : start + 1}</b>–<b>{Math.min(end, totalRows)}</b> of <b>{totalRows}</b>
+                </small>
+
+                <div className="d-flex align-items-center gap-2">
+                  <select
+                    className="form-select form-select-sm"
+                    style={{ width: 110 }}
+                    value={pageSize}
+                    onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }}
+                  >
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
+
+                  <div className="btn-group">
+                    <button className="btn btn-outline-secondary btn-sm" disabled={safePage === 1} onClick={() => setPage(1)}>«</button>
+                    <button className="btn btn-outline-secondary btn-sm" disabled={safePage === 1} onClick={() => setPage(safePage - 1)}>‹</button>
+                    <button className="btn btn-outline-secondary btn-sm" disabled>{safePage} / {totalPages}</button>
+                    <button className="btn btn-outline-secondary btn-sm" disabled={safePage === totalPages} onClick={() => setPage(safePage + 1)}>›</button>
+                    <button className="btn btn-outline-secondary btn-sm" disabled={safePage === totalPages} onClick={() => setPage(totalPages)}>»</button>
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
         </>

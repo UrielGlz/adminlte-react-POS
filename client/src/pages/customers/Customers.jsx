@@ -4,17 +4,23 @@ import api from '../../services/api'
 import Swal from 'sweetalert2'
 
 function Customers() {
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
+
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
 
   useEffect(() => { fetchData() }, [])
+  useEffect(() => { setPage(1) }, [search])
 
   const fetchData = async () => {
     try {
       setLoading(true)
       const response = await api.get('/customers?all=true')
       setItems(response.data.data)
+      setPage(1)
+
     } catch (error) {
       Swal.fire('Error', 'Could not load customers', 'error')
     } finally { setLoading(false) }
@@ -43,12 +49,20 @@ function Customers() {
     } catch (error) { Swal.fire('Error', 'Could not update', 'error') }
   }
 
-  const filtered = items.filter(i => 
+  const filtered = items.filter(i =>
     i.account_name?.toLowerCase().includes(search.toLowerCase()) ||
     i.account_number?.toLowerCase().includes(search.toLowerCase()) ||
     i.phone_number?.toLowerCase().includes(search.toLowerCase()) ||
     i.tax_id?.toLowerCase().includes(search.toLowerCase())
   )
+  const totalRows = filtered.length
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))
+  const safePage = Math.min(Math.max(page, 1), totalPages)
+
+  const start = (safePage - 1) * pageSize
+  const end = start + pageSize
+  const pagedItems = filtered.slice(start, end)
+
 
   const formatCurrency = (val) => val ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val) : '-'
 
@@ -110,7 +124,7 @@ function Customers() {
                 <tbody>
                   {filtered.length === 0 ? (
                     <tr><td colSpan="12" className="text-center py-4 text-muted">No customers found</td></tr>
-                  ) : filtered.map(item => (
+                  ) : pagedItems.map(item => (
                     <tr key={item.id_customer} className={!item.is_active ? 'table-secondary' : ''}>
                       <td><code className="bg-light px-2 py-1 rounded">{item.account_number}</code></td>
                       <td><i className="bi bi-person me-2 text-primary"></i>{item.account_name}</td>
@@ -163,8 +177,39 @@ function Customers() {
               </table>
             </div>
           )}
+          <div className="d-flex flex-wrap justify-content-between align-items-center p-3 gap-2">
+            <small className="text-muted">
+              Showing <b>{totalRows === 0 ? 0 : start + 1}</b>–<b>{Math.min(end, totalRows)}</b> of <b>{totalRows}</b>
+            </small>
+
+            <div className="d-flex align-items-center gap-2">
+              <select
+                className="form-select form-select-sm"
+                style={{ width: 110 }}
+                value={pageSize}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }}
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+
+              <div className="btn-group">
+                <button className="btn btn-outline-secondary btn-sm" disabled={safePage === 1} onClick={() => setPage(1)}>«</button>
+                <button className="btn btn-outline-secondary btn-sm" disabled={safePage === 1} onClick={() => setPage(safePage - 1)}>‹</button>
+                <button className="btn btn-outline-secondary btn-sm" disabled>{safePage} / {totalPages}</button>
+                <button className="btn btn-outline-secondary btn-sm" disabled={safePage === totalPages} onClick={() => setPage(safePage + 1)}>›</button>
+                <button className="btn btn-outline-secondary btn-sm" disabled={safePage === totalPages} onClick={() => setPage(totalPages)}>»</button>
+              </div>
+            </div>
+          </div>
+
         </div>
-        <div className="card-footer text-muted small">{filtered.length} customer(s)</div>
+        <div className="card-footer text-muted small">
+          Showing {totalRows === 0 ? 0 : start + 1}-{Math.min(end, totalRows)} of {totalRows} customer(s)
+        </div>
+
       </div>
     </div>
   )

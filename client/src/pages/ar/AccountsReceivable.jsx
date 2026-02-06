@@ -20,7 +20,8 @@ function AccountsReceivable() {
     reference_number: '',
     amount_received: '',
     apply_method: 'FIFO',
-    notes: ''
+    notes: '',
+    is_credit_balance: false  // Nueva opción para PREPAID customers
   })
 
   // Manual allocation state
@@ -81,13 +82,33 @@ function AccountsReceivable() {
     const customerId = e.target.value
     setSelectedCustomerId(customerId)
     fetchCustomerData(customerId)
-    setPaymentForm(prev => ({ ...prev, amount_received: '', reference_number: '' }))
+    setPaymentForm(prev => ({ 
+      ...prev, 
+      amount_received: '', 
+      reference_number: '',
+      is_credit_balance: false 
+    }))
   }
 
   // Handle payment form changes
   const handleFormChange = (e) => {
-    const { name, value } = e.target
-    setPaymentForm(prev => ({ ...prev, [name]: value }))
+    const { name, value, type, checked } = e.target
+    
+    // Si se marca/desmarca credit balance, resetear otros campos
+    if (name === 'is_credit_balance') {
+      setPaymentForm(prev => ({ 
+        ...prev, 
+        [name]: checked,
+        apply_method: 'FIFO',  // Reset apply method cuando cambia
+        amount_received: ''
+      }))
+      setManualAllocations({})
+    } else {
+      setPaymentForm(prev => ({ 
+        ...prev, 
+        [name]: type === 'checkbox' ? checked : value 
+      }))
+    }
   }
 
   // Handle manual allocation change
@@ -139,8 +160,14 @@ function AccountsReceivable() {
       return
     }
 
-    // Validate manual allocations
-    if (paymentForm.apply_method === 'MANUAL') {
+    // Validar credit balance solo para PREPAID
+    if (paymentForm.is_credit_balance && customerSummary.credit_type !== 'PREPAID') {
+      Swal.fire('Warning', 'Credit balance is only available for PREPAID customers', 'warning')
+      return
+    }
+
+    // Validate manual allocations (solo si NO es credit balance)
+    if (!paymentForm.is_credit_balance && paymentForm.apply_method === 'MANUAL') {
       const manualTotal = calculateManualTotal()
       if (manualTotal <= 0) {
         Swal.fire('Warning', 'Please allocate amounts to at least one transaction', 'warning')
@@ -153,13 +180,18 @@ function AccountsReceivable() {
     }
 
     // Confirm
+    const confirmMessage = paymentForm.is_credit_balance
+      ? `<p><strong>Type:</strong> Credit Balance (Prepayment)</p>
+         <p><strong>Amount:</strong> $${parseFloat(paymentForm.amount_received).toFixed(2)}</p>
+         <p><strong>Method:</strong> ${paymentMethods.find(m => m.method_id == paymentForm.method_id)?.name}</p>
+         <p class="text-info"><small>This amount will be available for future purchases</small></p>`
+      : `<p><strong>Amount:</strong> $${parseFloat(paymentForm.amount_received).toFixed(2)}</p>
+         <p><strong>Method:</strong> ${paymentMethods.find(m => m.method_id == paymentForm.method_id)?.name}</p>
+         <p><strong>Apply Mode:</strong> ${paymentForm.apply_method}</p>`
+
     const result = await Swal.fire({
       title: 'Confirm Payment',
-      html: `
-        <p><strong>Amount:</strong> $${parseFloat(paymentForm.amount_received).toFixed(2)}</p>
-        <p><strong>Method:</strong> ${paymentMethods.find(m => m.method_id == paymentForm.method_id)?.name}</p>
-        <p><strong>Apply Mode:</strong> ${paymentForm.apply_method}</p>
-      `,
+      html: confirmMessage,
       icon: 'question',
       showCancelButton: true,
       confirmButtonText: 'Apply Payment',
@@ -177,11 +209,12 @@ function AccountsReceivable() {
         reference_number: paymentForm.reference_number || null,
         amount_received: parseFloat(paymentForm.amount_received),
         apply_method: paymentForm.apply_method,
-        notes: paymentForm.notes || null
+        notes: paymentForm.notes || null,
+        is_credit_balance: paymentForm.is_credit_balance  // Nuevo flag
       }
 
-      // Add allocations for manual mode
-      if (paymentForm.apply_method === 'MANUAL') {
+      // Add allocations for manual mode (solo si NO es credit balance)
+      if (!paymentForm.is_credit_balance && paymentForm.apply_method === 'MANUAL') {
         payload.allocations = Object.entries(manualAllocations)
           .filter(([_, amount]) => amount > 0)
           .map(([payment_uid, amount]) => ({ payment_uid, amount }))
@@ -189,15 +222,18 @@ function AccountsReceivable() {
 
       const response = await api.post('/ar/payments', payload)
 
+      const successMessage = paymentForm.is_credit_balance
+        ? `<p><strong>Credit Balance Added:</strong> $${response.data.data.amount_received.toFixed(2)}</p>
+           <p class="text-success">Amount available for future purchases</p>`
+        : `<p><strong>Amount Applied:</strong> $${response.data.data.amount_applied.toFixed(2)}</p>
+           <p><strong>Transactions:</strong> ${response.data.data.allocations_count}</p>
+           ${response.data.data.amount_unapplied > 0 
+             ? `<p class="text-warning"><strong>Unapplied:</strong> $${response.data.data.amount_unapplied.toFixed(2)}</p>` 
+             : ''}`
+
       await Swal.fire({
         title: 'Payment Applied',
-        html: `
-          <p><strong>Amount Applied:</strong> $${response.data.data.amount_applied.toFixed(2)}</p>
-          <p><strong>Transactions:</strong> ${response.data.data.allocations_count}</p>
-          ${response.data.data.amount_unapplied > 0 
-            ? `<p class="text-warning"><strong>Unapplied:</strong> $${response.data.data.amount_unapplied.toFixed(2)}</p>` 
-            : ''}
-        `,
+        html: successMessage,
         icon: 'success'
       })
 
@@ -207,7 +243,8 @@ function AccountsReceivable() {
         ...prev,
         amount_received: '',
         reference_number: '',
-        notes: ''
+        notes: '',
+        is_credit_balance: false
       }))
       setManualAllocations({})
 
@@ -240,6 +277,9 @@ function AccountsReceivable() {
     }
     return badges[bucket] || 'bg-secondary'
   }
+
+  // Determinar si mostrar pending transactions
+  const showPendingTransactions = !paymentForm.is_credit_balance && pendingData.transactions.length > 0
 
   return (
     <div className="container-fluid">
@@ -312,12 +352,15 @@ function AccountsReceivable() {
                   <h5 className="card-title">{customerSummary.account_name}</h5>
                   <p className="text-muted mb-2">{customerSummary.account_number}</p>
                   
-                  {customerSummary.is_suspended ? (
-                    <div className="alert alert-danger py-2">
+                  {/* MEJORA 1: Mostrar advertencia pero permitir pagos */}
+                  {customerSummary.is_suspended && (
+                    <div className="alert alert-warning py-2">
                       <i className="bi bi-exclamation-triangle me-1"></i>
                       <strong>SUSPENDED:</strong> {customerSummary.suspension_reason || 'No reason provided'}
+                      <br />
+                      <small className="text-muted">Accounting can still apply payments</small>
                     </div>
-                  ) : null}
+                  )}
 
                   <table className="table table-sm table-borderless mb-0">
                     <tbody>
@@ -437,7 +480,7 @@ function AccountsReceivable() {
           </div>
 
           {/* Aging Summary */}
-          {pendingData.transactions.length > 0 && (
+          {pendingData.transactions.length > 0 && !paymentForm.is_credit_balance && (
             <div className="row mb-4">
               <div className="col-12">
                 <div className="card">
@@ -485,76 +528,106 @@ function AccountsReceivable() {
           )}
 
           {/* Payment Form & Pending Transactions */}
-          {!customerSummary.is_suspended && pendingData.transactions.length > 0 && (
-            <div className="row">
-              {/* Payment Form */}
-              <div className="col-md-4">
-                <div className="card sticky-top" style={{ top: '1rem' }}>
-                  <div className="card-header bg-primary text-white">
-                    <i className="bi bi-plus-circle me-2"></i>
-                    Apply Payment
-                  </div>
-                  <div className="card-body">
-                    <form onSubmit={handleSubmit}>
-                      {/* Payment Date */}
+          <div className="row">
+            {/* Payment Form */}
+            <div className="col-md-4">
+              <div className="card sticky-top" style={{ top: '1rem' }}>
+                <div className="card-header bg-primary text-white">
+                  <i className="bi bi-plus-circle me-2"></i>
+                  Apply Payment
+                </div>
+                <div className="card-body">
+                  <form onSubmit={handleSubmit}>
+                    {/* MEJORA 2: Credit Balance Option (solo PREPAID) */}
+                    {customerSummary.credit_type === 'PREPAID' && (
                       <div className="mb-3">
-                        <label className="form-label">Payment Date *</label>
-                        <input
-                          type="date"
-                          className="form-control"
-                          name="payment_date"
-                          value={paymentForm.payment_date}
-                          onChange={handleFormChange}
-                          required
-                        />
-                      </div>
-
-                      {/* Payment Method */}
-                      <div className="mb-3">
-                        <label className="form-label">Payment Method *</label>
-                        <select
-                          className="form-select"
-                          name="method_id"
-                          value={paymentForm.method_id}
-                          onChange={handleFormChange}
-                          required
-                        >
-                          <option value="">-- Select --</option>
-                          {paymentMethods.map(m => (
-                            <option key={m.method_id} value={m.method_id}>{m.name}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Reference Number */}
-                      <div className="mb-3">
-                        <label className="form-label">Reference / Check #</label>
-                        <input
-                          type="text"
-                          className="form-control"
-                          name="reference_number"
-                          value={paymentForm.reference_number}
-                          onChange={handleFormChange}
-                          placeholder="Check #, Wire #, etc."
-                        />
-                      </div>
-
-                      {/* Amount Received */}
-                      <div className="mb-3">
-                        <label className="form-label">Amount Received *</label>
-                        <div className="input-group">
-                          <span className="input-group-text">$</span>
+                        <div className="form-check form-switch">
                           <input
-                            type="number"
-                            className="form-control"
-                            name="amount_received"
-                            value={paymentForm.amount_received}
+                            className="form-check-input"
+                            type="checkbox"
+                            id="creditBalanceSwitch"
+                            name="is_credit_balance"
+                            checked={paymentForm.is_credit_balance}
                             onChange={handleFormChange}
-                            step="0.01"
-                            min="0.01"
-                            placeholder="0.00"
-                            required
                           />
+                          <label className="form-check-label" htmlFor="creditBalanceSwitch">
+                            <strong>Credit Balance</strong>
+                            <br />
+                            <small className="text-muted">Prepayment for future purchases</small>
+                          </label>
+                        </div>
+                        {paymentForm.is_credit_balance && (
+                          <div className="alert alert-info mt-2 py-2">
+                            <small>
+                              <i className="bi bi-info-circle me-1"></i>
+                              This payment will NOT be applied to any tickets. 
+                              It will be available as credit for future purchases.
+                            </small>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Payment Date */}
+                    <div className="mb-3">
+                      <label className="form-label">Payment Date *</label>
+                      <input
+                        type="date"
+                        className="form-control"
+                        name="payment_date"
+                        value={paymentForm.payment_date}
+                        onChange={handleFormChange}
+                        required
+                      />
+                    </div>
+
+                    {/* Payment Method */}
+                    <div className="mb-3">
+                      <label className="form-label">Payment Method *</label>
+                      <select
+                        className="form-select"
+                        name="method_id"
+                        value={paymentForm.method_id}
+                        onChange={handleFormChange}
+                        required
+                      >
+                        <option value="">-- Select --</option>
+                        {paymentMethods.map(m => (
+                          <option key={m.method_id} value={m.method_id}>{m.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Reference Number */}
+                    <div className="mb-3">
+                      <label className="form-label">Reference / Check #</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        name="reference_number"
+                        value={paymentForm.reference_number}
+                        onChange={handleFormChange}
+                        placeholder="Check #, Wire #, etc."
+                      />
+                    </div>
+
+                    {/* Amount Received */}
+                    <div className="mb-3">
+                      <label className="form-label">Amount Received *</label>
+                      <div className="input-group">
+                        <span className="input-group-text">$</span>
+                        <input
+                          type="number"
+                          className="form-control"
+                          name="amount_received"
+                          value={paymentForm.amount_received}
+                          onChange={handleFormChange}
+                          step="0.01"
+                          min="0.01"
+                          placeholder="0.00"
+                          required
+                        />
+                        {!paymentForm.is_credit_balance && pendingData.transactions.length > 0 && (
                           <button
                             type="button"
                             className="btn btn-outline-secondary"
@@ -563,13 +636,17 @@ function AccountsReceivable() {
                           >
                             <i className="bi bi-arrow-down-circle"></i>
                           </button>
-                        </div>
+                        )}
+                      </div>
+                      {!paymentForm.is_credit_balance && (
                         <small className="text-muted">
                           Total pending: {formatCurrency(pendingData.totals.total_pending)}
                         </small>
-                      </div>
+                      )}
+                    </div>
 
-                      {/* Apply Method */}
+                    {/* Apply Method - Solo si NO es credit balance */}
+                    {!paymentForm.is_credit_balance && (
                       <div className="mb-3">
                         <label className="form-label">Apply Method *</label>
                         <div className="btn-group w-100" role="group">
@@ -607,54 +684,56 @@ function AccountsReceivable() {
                             : 'Select transactions manually below'}
                         </small>
                       </div>
+                    )}
 
-                      {/* Manual Mode Total */}
-                      {paymentForm.apply_method === 'MANUAL' && (
-                        <div className="alert alert-info py-2">
-                          <div className="d-flex justify-content-between">
-                            <span>Manual Allocation:</span>
-                            <strong>{formatCurrency(calculateManualTotal())}</strong>
-                          </div>
+                    {/* Manual Mode Total */}
+                    {!paymentForm.is_credit_balance && paymentForm.apply_method === 'MANUAL' && (
+                      <div className="alert alert-info py-2">
+                        <div className="d-flex justify-content-between">
+                          <span>Manual Allocation:</span>
+                          <strong>{formatCurrency(calculateManualTotal())}</strong>
                         </div>
-                      )}
-
-                      {/* Notes */}
-                      <div className="mb-3">
-                        <label className="form-label">Notes</label>
-                        <textarea
-                          className="form-control"
-                          name="notes"
-                          value={paymentForm.notes}
-                          onChange={handleFormChange}
-                          rows="2"
-                          placeholder="Optional notes..."
-                        />
                       </div>
+                    )}
 
-                      {/* Submit */}
-                      <button
-                        type="submit"
-                        className="btn btn-success w-100"
-                        disabled={loading}
-                      >
-                        {loading ? (
-                          <>
-                            <span className="spinner-border spinner-border-sm me-2"></span>
-                            Processing...
-                          </>
-                        ) : (
-                          <>
-                            <i className="bi bi-check-circle me-2"></i>
-                            Apply Payment
-                          </>
-                        )}
-                      </button>
-                    </form>
-                  </div>
+                    {/* Notes */}
+                    <div className="mb-3">
+                      <label className="form-label">Notes</label>
+                      <textarea
+                        className="form-control"
+                        name="notes"
+                        value={paymentForm.notes}
+                        onChange={handleFormChange}
+                        rows="2"
+                        placeholder="Optional notes..."
+                      />
+                    </div>
+
+                    {/* Submit */}
+                    <button
+                      type="submit"
+                      className="btn btn-success w-100"
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-2"></span>
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <i className="bi bi-check-circle me-2"></i>
+                          {paymentForm.is_credit_balance ? 'Add Credit Balance' : 'Apply Payment'}
+                        </>
+                      )}
+                    </button>
+                  </form>
                 </div>
               </div>
+            </div>
 
-              {/* Pending Transactions */}
+            {/* Pending Transactions - Solo si NO es credit balance */}
+            {showPendingTransactions && (
               <div className="col-md-8">
                 <div className="card">
                   <div className="card-header d-flex justify-content-between align-items-center">
@@ -748,34 +827,26 @@ function AccountsReceivable() {
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* No pending transactions */}
-          {pendingData.transactions.length === 0 && !customerSummary.is_suspended && (
-            <div className="row">
-              <div className="col-12">
+            {/* No pending transactions & not credit balance */}
+            {pendingData.transactions.length === 0 && !paymentForm.is_credit_balance && (
+              <div className="col-md-8">
                 <div className="alert alert-success">
                   <i className="bi bi-check-circle me-2"></i>
                   This customer has no pending transactions. All payments are up to date!
+                  {customerSummary.credit_type === 'PREPAID' && (
+                    <>
+                      <br />
+                      <small className="text-muted">
+                        You can still add a credit balance by checking the option above.
+                      </small>
+                    </>
+                  )}
                 </div>
               </div>
-            </div>
-          )}
-
-          {/* Suspended customer */}
-          {customerSummary.is_suspended && (
-            <div className="row">
-              <div className="col-12">
-                <div className="alert alert-danger">
-                  <i className="bi bi-exclamation-triangle me-2"></i>
-                  <strong>Account Suspended:</strong> Cannot apply payments while account is suspended.
-                  <br />
-                  <small>Reason: {customerSummary.suspension_reason || 'No reason provided'}</small>
-                </div>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </>
       )}
 

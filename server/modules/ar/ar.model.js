@@ -151,6 +151,13 @@ export const getPaymentHistory = async (customerId, limit = 50) => {
       ap.amount_unapplied,
       ap.apply_method,
       ap.status,
+      CASE 
+        WHEN ap.status = 'CREDIT_BALANCE' THEN 'Credit Balance'
+        WHEN ap.status = 'APPLIED' THEN 'Applied'
+        WHEN ap.status = 'PARTIAL' THEN 'Partial'
+        WHEN ap.status = 'VOIDED' THEN 'Voided'
+        ELSE ap.status
+      END AS status_label,
       ap.reference_number,
       ap.notes,
       ap.created_at,
@@ -265,7 +272,6 @@ export const getAllPaymentHistory = async (filters = {}) => {
     params.push(status)
   }
 
-  // NOTE: Filtering by created_at (system registration date) per business requirement
   if (date_from) {
     conditions.push('DATE(ap.created_at) >= ?')
     params.push(date_from)
@@ -300,6 +306,13 @@ export const getAllPaymentHistory = async (filters = {}) => {
       ap.amount_unapplied,
       ap.apply_method,
       ap.status,
+      CASE 
+        WHEN ap.status = 'CREDIT_BALANCE' THEN 'Credit Balance'
+        WHEN ap.status = 'APPLIED' THEN 'Applied'
+        WHEN ap.status = 'PARTIAL' THEN 'Partial'
+        WHEN ap.status = 'VOIDED' THEN 'Voided'
+        ELSE ap.status
+      END AS status_label,
       ap.reference_number,
       ap.notes,
       ap.created_at,

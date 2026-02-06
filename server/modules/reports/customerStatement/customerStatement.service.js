@@ -143,7 +143,7 @@ export const getCustomerTransactions = async (customerId, dateFrom, dateTo) => {
       sdi.driver_last_name,
       sdi.vehicle_plates,
       sdi.license_state,
-      sdi.product_description as driver_product,
+      p.name as driver_product,
       sdi.trailer_number,
       sdi.tractor_number,
       u.full_name AS operator_name,
@@ -597,7 +597,7 @@ export const generatePdf = async (filters = {}) => {
 /**
  * Dibuja una página de ticket completa (LETTER landscape con ticket centrado)
  */
-function drawTicketPage(doc, t, logoPath) {
+export function drawTicketPage(doc, t, logoPath) {
   doc.addPage({
     size: [TICKET_W, TICKET_H],   // <-- 612 x 396 (8.5 x 5.5)
     margins: { top: 0, bottom: 0, left: 0, right: 0 }
@@ -612,7 +612,7 @@ function drawTicketPage(doc, t, logoPath) {
  * Dibuja el ticket en un canvas de 612x396 (mitad de LETTER horizontal)
  * MEJORADO: diseño más fiel al ticket original del POS
  */
-function drawTicket612x396(doc, t, logoPath) {
+export  function drawTicket612x396(doc, t, logoPath) {
   const W = TICKET_W
   const H = TICKET_H
   const MARGIN = 20

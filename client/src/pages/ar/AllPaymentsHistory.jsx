@@ -213,8 +213,8 @@ function AllPaymentsHistory() {
                 >
                   <option value="">All Status</option>
                   <option value="APPLIED">Applied</option>
-                  <option value="PARTIAL">Partial</option>
-                  <option value="VOIDED">Voided</option>
+                  <option value="CREDIT_BALANCE">Credit Balance</option>
+                  {/* <option value="VOIDED">Voided</option> */}
                 </select>
               </div>
 

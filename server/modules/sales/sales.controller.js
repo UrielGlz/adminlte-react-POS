@@ -1,5 +1,6 @@
 import salesService from './sales.service.js'
 import { success } from '../../utils/response.js'
+import { buildTicketPdfForSale } from './sales.ticketPdf.service.js'
 
 export const getAll = async (req, res, next) => {
   try {
@@ -44,5 +45,22 @@ export const getSummary = async (req, res, next) => {
     success(res, summary)
   } catch (error) { next(error) }
 }
+export const downloadTicketPdf = async (req, res) => {
+  try {
+    const saleId = Number(req.params.saleId)
+    if (!saleId) return res.status(400).json({ success:false, message:'Invalid saleId' })
 
-export default { getAll, getById, updatePaymentMethod, cancelSale, getSummary }
+    const { doc, filename } = await buildTicketPdfForSale(saleId) 
+    // buildTicketPdfForSale debe regresar un PDFDocument (doc) ya “pipeable”
+
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `attachment; filename="${filename || `ticket-${saleId}.pdf`}"`)
+
+    doc.pipe(res)
+    doc.end()
+  } catch (e) {
+    console.error(e)
+    return res.status(500).json({ success:false, message:'Could not generate ticket PDF' })
+  }
+}
+export default { getAll, getById, updatePaymentMethod, cancelSale, getSummary,downloadTicketPdf }

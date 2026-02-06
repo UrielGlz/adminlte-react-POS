@@ -57,6 +57,22 @@ function Sales() {
     const colors = { 'OPEN': 'warning', 'COMPLETED': 'success', 'CANCELLED': 'danger', 'REFUNDED': 'info' }
     return colors[code] || 'secondary'
   }
+  const downloadTicketPdf = async (saleId) => {
+    try {
+      const res = await api.get(`/sales/${saleId}/ticket.pdf`, { responseType: 'blob' })
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `ticket-${saleId}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (e) {
+      Swal.fire('Error', 'Could not download ticket PDF', 'error')
+    }
+  }
+
   const totalRows = items.length
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))
   const safePage = Math.min(Math.max(page, 1), totalPages)
@@ -126,7 +142,7 @@ function Sales() {
               <label className="form-label small">Status</label>
               <select className="form-select form-select-sm" name="status_id" value={filters.status_id} onChange={handleFilter}>
                 <option value="">All</option>
-                <option value="1">Open</option>
+                {/* <option value="1">Open</option> */}
                 <option value="2">Completed</option>
                 <option value="3">Cancelled</option>
               </select>
@@ -192,6 +208,14 @@ function Sales() {
                         <Link to={`/sales/${item.sale_id}`} className="btn btn-sm btn-outline-primary">
                           <i className="bi bi-eye"></i>
                         </Link>
+                        <button
+                          className="btn btn-sm btn-outline-danger"
+                          title="PDF"
+                          onClick={() => downloadTicketPdf(item.sale_id)}
+                        >
+                          <i className="bi bi-file-earmark-pdf"></i>
+                        </button>
+
                       </td>
                     </tr>
                   ))}

@@ -73,7 +73,7 @@ export const getPaymentMethods = async () => {
 }
 
 /**
- * Apply payment - Main function (FIFO or Manual)
+ * Apply payment - Main function (FIFO, Manual, or Credit Balance)
  */
 export const applyPayment = async (data, userId) => {
   const { 
@@ -84,7 +84,8 @@ export const applyPayment = async (data, userId) => {
     amount_received,
     apply_method,
     allocations,
-    notes
+    notes,
+    is_credit_balance = false  // Nueva opción para marcar como saldo a favor
   } = data
   
   // Validate customer
@@ -93,18 +94,34 @@ export const applyPayment = async (data, userId) => {
     throw new NotFoundError('Customer not found')
   }
   
-  // Check if suspended
-  const suspendedCheck = await ArModel.isCustomerSuspended(customer_id)
-  if (suspendedCheck.suspended) {
-    throw new ForbiddenError(`Customer account is suspended: ${suspendedCheck.reason || 'No reason provided'}`)
-  }
+  // MEJORA 1: Se eliminó la validación de cuenta suspendida
+  // Los usuarios de contabilidad PUEDEN agregar pagos aunque la cuenta esté suspendida
   
   // Validate amount
   if (!amount_received || amount_received <= 0) {
     throw new BadRequestError('Amount received must be greater than 0')
   }
   
-  // Get pending transactions
+  // MEJORA 2: Permitir CREDIT_BALANCE solo para clientes PREPAID
+  if (is_credit_balance) {
+    if (customer.credit_type !== 'PREPAID') {
+      throw new BadRequestError('Credit balance payments are only allowed for PREPAID customers')
+    }
+    
+    // Para CREDIT_BALANCE, no necesitamos pending transactions ni allocations
+    return await applyCreditBalancePayment({
+      customer_id,
+      customer,
+      payment_date,
+      method_id,
+      reference_number,
+      amount_received,
+      notes,
+      userId
+    })
+  }
+  
+  // Flujo normal: requiere pending transactions
   const pending = await ArModel.getPendingTransactions(customer_id)
   if (pending.length === 0) {
     throw new BadRequestError('No pending transactions found for this customer')
@@ -274,6 +291,81 @@ export const applyPayment = async (data, userId) => {
 }
 
 /**
+ * Apply Credit Balance Payment (PREPAID customers only)
+ * Este tipo de pago NO se asigna a ningún ticket - es saldo a favor para futuras compras
+ */
+const applyCreditBalancePayment = async (data) => {
+  const {
+    customer_id,
+    customer,
+    payment_date,
+    method_id,
+    reference_number,
+    amount_received,
+    notes,
+    userId
+  } = data
+  
+  const connection = await getConnection()
+  
+  try {
+    await connection.beginTransaction()
+    
+    // 1. Create A/R payment with CREDIT_BALANCE status
+    const [arPaymentResult] = await connection.query(
+      `INSERT INTO ar_payments (
+        customer_id, payment_date, method_id, reference_number,
+        amount_received, amount_applied, apply_method, status,
+        notes, created_by_user
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        customer_id,
+        payment_date,
+        method_id,
+        reference_number || null,
+        amount_received,
+        0,  // amount_applied = 0 porque no se asigna a ningún ticket
+        'FIFO',  // Default apply_method
+        'CREDIT_BALANCE',  // Nuevo status
+        notes || 'Credit balance - prepayment for future purchases',
+        userId
+      ]
+    )
+    
+    const arPaymentId = arPaymentResult.insertId
+    
+    // 2. Update customer credit - incrementar el saldo disponible
+    await connection.query(
+      `UPDATE customer_credit 
+       SET available_credit = available_credit + ?,
+           last_payment_date = NOW()
+       WHERE customer_id = ?`,
+      [amount_received, customer_id]
+    )
+    
+    // NO se crean allocations porque este pago no se asigna a ningún ticket
+    
+    await connection.commit()
+    
+    return {
+      ar_payment_id: arPaymentId,
+      amount_received: parseFloat(amount_received),
+      amount_applied: 0,
+      amount_unapplied: parseFloat(amount_received),
+      allocations_count: 0,
+      status: 'CREDIT_BALANCE',
+      message: `Credit balance of $${parseFloat(amount_received).toFixed(2)} added successfully. Available for future purchases.`
+    }
+    
+  } catch (error) {
+    await connection.rollback()
+    throw error
+  } finally {
+    connection.release()
+  }
+}
+
+/**
  * Get payment history
  */
 export const getPaymentHistory = async (customerId) => {
@@ -294,6 +386,7 @@ export const getPaymentDetail = async (arPaymentId) => {
   }
   return data
 }
+
 /**
  * Get all payment history with filters and pagination
  */
@@ -305,6 +398,7 @@ export const getAllPaymentHistory = async (filters) => {
   }
   return detail
 }
+
 export default {
   getCustomersWithCredit,
   getCustomerSummary,

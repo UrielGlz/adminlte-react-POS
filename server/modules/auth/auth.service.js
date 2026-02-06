@@ -58,7 +58,7 @@ export const login = async (username, password, ipAddress, userAgent) => {
     `SELECT user_id, username, full_name, email, password_hash, password_algo, 
             role_code, is_active, must_change_pw, site_id 
      FROM users 
-     WHERE username = ? OR email = ?`,
+     WHERE username = ? OR email = ? AND role_code <> 'OPERATOR' `,
     [username, username]
   )
 

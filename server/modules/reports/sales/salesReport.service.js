@@ -110,7 +110,7 @@ export const getData = async (filters = {}) => {
     params.push(status_id)
   }
 
-  sql += ` ORDER BY s.created_at DESC, s.sale_id DESC`
+  sql += ` ORDER BY s.created_at ASC, s.sale_id ASC`
 
   const data = await query(sql, params)
 

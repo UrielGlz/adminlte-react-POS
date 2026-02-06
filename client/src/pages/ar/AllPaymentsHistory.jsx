@@ -12,7 +12,7 @@ function AllPaymentsHistory() {
     date_from: '',
     date_to: ''
   })
-  
+
   // Data states
   const [history, setHistory] = useState([])
   const [pagination, setPagination] = useState({
@@ -22,7 +22,7 @@ function AllPaymentsHistory() {
     totalPages: 0
   })
   const [loading, setLoading] = useState(false)
-  
+
   // Page size options
   const pageSizeOptions = [10, 25, 50, 100]
 
@@ -40,18 +40,20 @@ function AllPaymentsHistory() {
     }
   }
 
-  const fetchHistory = useCallback(async (page = 1, limit = pagination.limit) => {
+  const fetchHistory = useCallback(async (page = 1, limit = pagination.limit, overrideFilters = null) => {
+    const f = overrideFilters ?? filters
+
     setLoading(true)
     try {
       const params = new URLSearchParams()
       params.append('page', page)
       params.append('limit', limit)
-      
-      if (filters.customer_id) params.append('customer_id', filters.customer_id)
-      if (filters.status) params.append('status', filters.status)
-      if (filters.date_from) params.append('date_from', filters.date_from)
-      if (filters.date_to) params.append('date_to', filters.date_to)
-      
+
+      if (f.customer_id) params.append('customer_id', f.customer_id)
+      if (f.status) params.append('status', f.status)
+      if (f.date_from) params.append('date_from', f.date_from)
+      if (f.date_to) params.append('date_to', f.date_to)
+
       const response = await api.get(`/ar/payments/all-history?${params.toString()}`)
       setHistory(response.data.data?.data || [])
       setPagination(response.data.data?.pagination || {
@@ -72,6 +74,8 @@ function AllPaymentsHistory() {
     const { name, value } = e.target
     setFilters(prev => ({ ...prev, [name]: value }))
   }
+  const firstRow = pagination.total === 0 ? 0 : ((pagination.page - 1) * pagination.limit) + 1
+  const lastRow = Math.min(pagination.page * pagination.limit, pagination.total)
 
   const handleSearch = (e) => {
     e.preventDefault()
@@ -79,15 +83,11 @@ function AllPaymentsHistory() {
   }
 
   const handleClearFilters = () => {
-    setFilters({
-      customer_id: '',
-      status: '',
-      date_from: '',
-      date_to: ''
-    })
-    // Fetch with cleared filters after state update
-    setTimeout(() => fetchHistory(1, pagination.limit), 0)
+    const cleared = { customer_id: '', status: '', date_from: '', date_to: '' }
+    setFilters(cleared)
+    fetchHistory(1, pagination.limit, cleared)
   }
+
 
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= pagination.totalPages) {
@@ -96,9 +96,10 @@ function AllPaymentsHistory() {
   }
 
   const handlePageSizeChange = (e) => {
-    const newLimit = parseInt(e.target.value)
+    const newLimit = parseInt(e.target.value, 10)
     fetchHistory(1, newLimit)
   }
+
 
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0)
@@ -130,7 +131,7 @@ function AllPaymentsHistory() {
   const getPageNumbers = () => {
     const pages = []
     const { page, totalPages } = pagination
-    
+
     if (totalPages <= 7) {
       for (let i = 1; i <= totalPages; i++) pages.push(i)
     } else {
@@ -247,8 +248,8 @@ function AllPaymentsHistory() {
                   <i className="bi bi-search me-1"></i>
                   Search
                 </button>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   className="btn btn-outline-secondary"
                   onClick={handleClearFilters}
                 >
@@ -266,7 +267,7 @@ function AllPaymentsHistory() {
         <div className="card-header d-flex justify-content-between align-items-center">
           <span>
             <i className="bi bi-list me-2"></i>
-            Payment Records 
+            Payment Records
             {pagination.total > 0 && (
               <span className="text-muted ms-2">
                 (Showing {((pagination.page - 1) * pagination.limit) + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total})
@@ -275,8 +276,8 @@ function AllPaymentsHistory() {
           </span>
           <div className="d-flex align-items-center gap-2">
             <label className="mb-0 text-muted small">Rows:</label>
-            <select 
-              className="form-select form-select-sm" 
+            <select
+              className="form-select form-select-sm"
               style={{ width: 'auto' }}
               value={pagination.limit}
               onChange={handlePageSizeChange}
@@ -287,7 +288,7 @@ function AllPaymentsHistory() {
             </select>
           </div>
         </div>
-        
+
         {loading ? (
           <div className="card-body text-center py-5">
             <div className="spinner-border text-primary"></div>
@@ -296,7 +297,8 @@ function AllPaymentsHistory() {
         ) : history.length > 0 ? (
           <>
             <div className="table-responsive">
-              <table className="table table-hover mb-0">
+              <table className="table table-hover table-sm mb-0 align-middle">
+
                 <thead className="table-light">
                   <tr>
                     <th>ID</th>
@@ -326,10 +328,11 @@ function AllPaymentsHistory() {
                       <td>{formatDate(h.payment_date)}</td>
                       <td>{h.payment_method}</td>
                       <td>{h.reference_number || '-'}</td>
-                      <td className="text-end">{formatCurrency(h.amount_received)}</td>
-                      <td className="text-end text-success">{formatCurrency(h.amount_applied)}</td>
+                      <td className="text-end font-monospace">{formatCurrency(h.amount_received)}</td>
+
+                      <td className="text-end text-success font-monospace">{formatCurrency(h.amount_applied)}</td>
                       <td className="text-end">
-                        {parseFloat(h.amount_unapplied) > 0 
+                        {parseFloat(h.amount_unapplied) > 0
                           ? <span className="text-warning">{formatCurrency(h.amount_unapplied)}</span>
                           : '-'}
                       </td>
@@ -348,7 +351,7 @@ function AllPaymentsHistory() {
                         <small>{formatDateTime(h.created_at)}</small>
                       </td>
                       <td>
-                        <Link 
+                        <Link
                           to={`/ar/payments/${h.ar_payment_id}`}
                           className="btn btn-sm btn-outline-primary"
                           title="View Details"
@@ -364,73 +367,71 @@ function AllPaymentsHistory() {
 
             {/* Pagination */}
             {pagination.totalPages > 1 && (
-              <div className="card-footer d-flex justify-content-between align-items-center">
+              <div className="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
                 <div className="text-muted small">
-                  Page {pagination.page} of {pagination.totalPages}
+                  Showing {firstRow}-{lastRow} of {pagination.total}
                 </div>
-                <nav>
-                  <ul className="pagination pagination-sm mb-0">
-                    <li className={`page-item ${pagination.page === 1 ? 'disabled' : ''}`}>
-                      <button 
-                        className="page-link" 
-                        onClick={() => handlePageChange(1)}
-                        disabled={pagination.page === 1}
-                      >
-                        <i className="bi bi-chevron-double-left"></i>
-                      </button>
-                    </li>
-                    <li className={`page-item ${pagination.page === 1 ? 'disabled' : ''}`}>
-                      <button 
-                        className="page-link" 
-                        onClick={() => handlePageChange(pagination.page - 1)}
-                        disabled={pagination.page === 1}
-                      >
-                        <i className="bi bi-chevron-left"></i>
-                      </button>
-                    </li>
-                    
-                    {getPageNumbers().map((pageNum, idx) => (
-                      pageNum === '...' ? (
-                        <li key={`ellipsis-${idx}`} className="page-item disabled">
-                          <span className="page-link">...</span>
-                        </li>
-                      ) : (
-                        <li 
-                          key={pageNum} 
-                          className={`page-item ${pagination.page === pageNum ? 'active' : ''}`}
-                        >
-                          <button 
-                            className="page-link" 
-                            onClick={() => handlePageChange(pageNum)}
-                          >
-                            {pageNum}
-                          </button>
-                        </li>
-                      )
-                    ))}
-                    
-                    <li className={`page-item ${pagination.page === pagination.totalPages ? 'disabled' : ''}`}>
-                      <button 
-                        className="page-link" 
-                        onClick={() => handlePageChange(pagination.page + 1)}
-                        disabled={pagination.page === pagination.totalPages}
-                      >
-                        <i className="bi bi-chevron-right"></i>
-                      </button>
-                    </li>
-                    <li className={`page-item ${pagination.page === pagination.totalPages ? 'disabled' : ''}`}>
-                      <button 
-                        className="page-link" 
-                        onClick={() => handlePageChange(pagination.totalPages)}
-                        disabled={pagination.page === pagination.totalPages}
-                      >
-                        <i className="bi bi-chevron-double-right"></i>
-                      </button>
-                    </li>
-                  </ul>
-                </nav>
+
+                <div className="d-flex align-items-center gap-2">
+                  <div className="text-muted small">Page</div>
+
+                  <button
+                    className="btn btn-sm btn-outline-secondary"
+                    disabled={pagination.page === 1}
+                    onClick={() => handlePageChange(1)}
+                  >
+                    «
+                  </button>
+
+                  <button
+                    className="btn btn-sm btn-outline-secondary"
+                    disabled={pagination.page === 1}
+                    onClick={() => handlePageChange(pagination.page - 1)}
+                  >
+                    ‹
+                  </button>
+
+                  <span className="small">
+                    {pagination.page} <span className="text-muted">of</span> {pagination.totalPages}
+                  </span>
+
+                  <button
+                    className="btn btn-sm btn-outline-secondary"
+                    disabled={pagination.page === pagination.totalPages}
+                    onClick={() => handlePageChange(pagination.page + 1)}
+                  >
+                    ›
+                  </button>
+
+                  <button
+                    className="btn btn-sm btn-outline-secondary"
+                    disabled={pagination.page === pagination.totalPages}
+                    onClick={() => handlePageChange(pagination.totalPages)}
+                  >
+                    »
+                  </button>
+
+                  <div className="vr mx-1" />
+
+                  <label className="text-muted small mb-0">Go to</label>
+                  <input
+                    type="number"
+                    className="form-control form-control-sm"
+                    style={{ width: 80 }}
+                    min={1}
+                    max={pagination.totalPages}
+                    defaultValue={pagination.page}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const val = Number(e.currentTarget.value)
+                        if (!Number.isNaN(val)) handlePageChange(val)
+                      }
+                    }}
+                  />
+                </div>
               </div>
             )}
+
           </>
         ) : (
           <div className="card-body text-center py-5">

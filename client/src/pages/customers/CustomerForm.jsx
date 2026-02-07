@@ -12,18 +12,18 @@ function CustomerForm() {
   const [saving, setSaving] = useState(false)
   const [formData, setFormData] = useState({
     account_number: '',
-    account_name: '', 
-    account_address: '', 
+    account_name: '',
+    account_address: '',
     city: '',
     account_state: '',
-    account_country: 'Mexico', 
+    account_country: 'Mexico',
     phone_number: '',
     tax_id: '',
-    has_credit: false, 
+    has_credit: false,
     is_active: true,
-    credit: { 
-      credit_type: 'POSTPAID', 
-      credit_limit: 0, 
+    credit: {
+      credit_type: 'POSTPAID',
+      credit_limit: 0,
       payment_terms_days: 30,
       is_suspended: false,
       suspension_reason: ''
@@ -34,6 +34,30 @@ function CustomerForm() {
   const creditTypes = ['POSTPAID', 'PREPAID']
 
   useEffect(() => { if (isEditing) fetchItem() }, [id])
+  useEffect(() => {
+    if (!formData.has_credit) return
+
+    if (formData.credit.credit_type === 'PREPAID') {
+      setFormData(prev => ({
+        ...prev,
+        credit: {
+          ...prev.credit,
+          credit_limit: null,
+          payment_terms_days: null
+        }
+      }))
+    } else {
+      // POSTPAID: asegura defaults si vienen null
+      setFormData(prev => ({
+        ...prev,
+        credit: {
+          ...prev.credit,
+          credit_limit: prev.credit.credit_limit ?? 0,
+          payment_terms_days: prev.credit.payment_terms_days ?? 30
+        }
+      }))
+    }
+  }, [formData.has_credit, formData.credit.credit_type])
 
   const fetchItem = async () => {
     try {
@@ -43,13 +67,13 @@ function CustomerForm() {
       setFormData({
         account_number: item.account_number,
         account_name: item.account_name,
-        account_address: item.account_address || '', 
+        account_address: item.account_address || '',
         city: item.city || '',
         account_state: item.account_state || '',
         account_country: item.account_country || 'Mexico',
         phone_number: item.phone_number || '',
         tax_id: item.tax_id || '',
-        has_credit: item.has_credit === 1, 
+        has_credit: item.has_credit === 1,
         is_active: item.is_active === 1,
         credit: {
           credit_type: item.credit_type || 'POSTPAID',
@@ -75,12 +99,12 @@ function CustomerForm() {
     const { name, value, type, checked } = e.target
     if (name.startsWith('credit_')) {
       const field = name.replace('credit_', '')
-      setFormData(prev => ({ 
-        ...prev, 
-        credit: { 
-          ...prev.credit, 
-          [field]: type === 'checkbox' ? checked : value 
-        } 
+      setFormData(prev => ({
+        ...prev,
+        credit: {
+          ...prev.credit,
+          [field]: type === 'checkbox' ? checked : value
+        }
       }))
     } else {
       setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }))
@@ -115,19 +139,34 @@ function CustomerForm() {
 
     try {
       setSaving(true)
-      const payload = { 
-        ...formData, 
-        credit: formData.has_credit ? { 
-          ...formData.credit, 
-          credit_limit: parseFloat(formData.credit.credit_limit) || 0 
-        } : null 
-      }
+      const creditPayload = formData.has_credit
+        ? {
+          ...formData.credit,
+          credit_limit:
+            formData.credit.credit_type === 'PREPAID'
+              ? null
+              : (parseFloat(formData.credit.credit_limit) || 0),
+          payment_terms_days:
+            formData.credit.credit_type === 'PREPAID'
+              ? null
+              : (parseInt(formData.credit.payment_terms_days, 10) || 0)
+        }
+        : null
+      // const payload = {
+      //   ...formData,
+      //   credit: formData.has_credit ? {
+      //     ...formData.credit,
+      //     credit_limit: parseFloat(formData.credit.credit_limit) || 0
+      //   } : null
+      // }
+      const payload = { ...formData, credit: creditPayload }
+
       // No enviar account_number en create (se genera automáticamente)
       if (!isEditing) delete payload.account_number
-      
+
       if (isEditing) await api.put(`/customers/${id}`, payload)
       else await api.post('/customers', payload)
-      
+
       Swal.fire({ icon: 'success', title: 'Saved!', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 })
       navigate('/customers')
     } catch (error) {
@@ -148,6 +187,8 @@ function CustomerForm() {
   }
 
   if (loading) return <div className="container-fluid p-4 text-center"><div className="spinner-border text-primary"></div></div>
+  const isPrepaid = formData.has_credit && formData.credit.credit_type === 'PREPAID'
+  const isPostpaid = formData.has_credit && formData.credit.credit_type === 'POSTPAID'
 
   return (
     <div className="container-fluid p-4">
@@ -178,25 +219,25 @@ function CustomerForm() {
               {/* Name */}
               <div className="col-md-6 mb-3">
                 <label className="form-label">Account Name <span className="text-danger">*</span></label>
-                <input 
-                  type="text" 
-                  className="form-control form-control-lg" 
-                  name="account_name" 
-                  value={formData.account_name} 
-                  onChange={handleChange} 
+                <input
+                  type="text"
+                  className="form-control form-control-lg"
+                  name="account_name"
+                  value={formData.account_name}
+                  onChange={handleChange}
                   placeholder="e.g., Transportes Acme S.A. de C.V."
-                  required 
+                  required
                 />
               </div>
               {/* Tax ID */}
               <div className="col-md-3 mb-3">
                 <label className="form-label">Tax ID (RFC)</label>
-                <input 
-                  type="text" 
-                  className="form-control form-control-lg" 
-                  name="tax_id" 
-                  value={formData.tax_id} 
-                  onChange={handleChange} 
+                <input
+                  type="text"
+                  className="form-control form-control-lg"
+                  name="tax_id"
+                  value={formData.tax_id}
+                  onChange={handleChange}
                   placeholder="e.g., XAXX010101000"
                   style={{ textTransform: 'uppercase' }}
                 />
@@ -206,12 +247,12 @@ function CustomerForm() {
                 <label className="form-label">Phone Number</label>
                 <div className="input-group input-group-lg">
                   <span className="input-group-text"><i className="bi bi-telephone"></i></span>
-                  <input 
-                    type="tel" 
-                    className="form-control" 
-                    name="phone_number" 
-                    value={formData.phone_number} 
-                    onChange={handleChange} 
+                  <input
+                    type="tel"
+                    className="form-control"
+                    name="phone_number"
+                    value={formData.phone_number}
+                    onChange={handleChange}
                     placeholder="e.g., 844-123-4567"
                   />
                 </div>
@@ -222,11 +263,11 @@ function CustomerForm() {
               {/* Address */}
               <div className="col-md-6 mb-3">
                 <label className="form-label">Address</label>
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  name="account_address" 
-                  value={formData.account_address} 
+                <input
+                  type="text"
+                  className="form-control"
+                  name="account_address"
+                  value={formData.account_address}
                   onChange={handleChange}
                   placeholder="Street address"
                 />
@@ -234,11 +275,11 @@ function CustomerForm() {
               {/* City */}
               <div className="col-md-2 mb-3">
                 <label className="form-label">City</label>
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  name="city" 
-                  value={formData.city} 
+                <input
+                  type="text"
+                  className="form-control"
+                  name="city"
+                  value={formData.city}
                   onChange={handleChange}
                   placeholder="e.g., Saltillo"
                 />
@@ -246,23 +287,23 @@ function CustomerForm() {
               {/* State */}
               <div className="col-md-2 mb-3">
                 <label className="form-label">State</label>
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  name="account_state" 
-                  value={formData.account_state} 
-                  onChange={handleChange} 
+                <input
+                  type="text"
+                  className="form-control"
+                  name="account_state"
+                  value={formData.account_state}
+                  onChange={handleChange}
                   placeholder="e.g., Coahuila"
                 />
               </div>
               {/* Country */}
               <div className="col-md-2 mb-3">
                 <label className="form-label">Country</label>
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  name="account_country" 
-                  value={formData.account_country} 
+                <input
+                  type="text"
+                  className="form-control"
+                  name="account_country"
+                  value={formData.account_country}
                   onChange={handleChange}
                 />
               </div>
@@ -271,12 +312,12 @@ function CustomerForm() {
             {/* Status Toggle */}
             <div className="d-flex align-items-center pt-2 border-top">
               <div className="form-check form-switch">
-                <input 
-                  className="form-check-input" 
-                  type="checkbox" 
-                  name="is_active" 
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  name="is_active"
                   id="is_active"
-                  checked={formData.is_active} 
+                  checked={formData.is_active}
                   onChange={handleChange}
                   style={{ width: '3em', height: '1.5em' }}
                 />
@@ -297,12 +338,12 @@ function CustomerForm() {
           <div className="card-header bg-light d-flex justify-content-between align-items-center">
             <h5 className="mb-0"><i className="bi bi-credit-card me-2"></i>Credit Settings</h5>
             <div className="form-check form-switch mb-0">
-              <input 
-                className="form-check-input" 
-                type="checkbox" 
-                name="has_credit" 
+              <input
+                className="form-check-input"
+                type="checkbox"
+                name="has_credit"
                 id="has_credit"
-                checked={formData.has_credit} 
+                checked={formData.has_credit}
                 onChange={handleChange}
                 style={{ width: '3em', height: '1.5em' }}
               />
@@ -316,50 +357,57 @@ function CustomerForm() {
               <div className="row">
                 <div className="col-md-4 mb-3">
                   <label className="form-label">Credit Type</label>
-                  <select 
-                    className="form-select form-select-lg" 
-                    name="credit_credit_type" 
-                    value={formData.credit.credit_type} 
+                  <select
+                    className="form-select form-select-lg"
+                    name="credit_credit_type"
+                    value={formData.credit.credit_type}
                     onChange={handleChange}
                   >
                     {creditTypes.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                   <div className="form-text">
-                    {formData.credit.credit_type === 'POSTPAID' 
-                      ? 'Customer pays after service (invoice)' 
+                    {formData.credit.credit_type === 'POSTPAID'
+                      ? 'Customer pays after service (invoice)'
                       : 'Customer has prepaid balance'}
                   </div>
                 </div>
-                <div className="col-md-4 mb-3">
-                  <label className="form-label">Credit Limit</label>
-                  <div className="input-group input-group-lg">
-                    <span className="input-group-text">$</span>
-                    <input 
-                      type="number" 
-                      className="form-control" 
-                      name="credit_credit_limit" 
-                      value={formData.credit.credit_limit} 
-                      onChange={handleChange} 
-                      min="0" 
-                      step="0.01" 
-                    />
-                    <span className="input-group-text">USD</span>
-                  </div>
-                </div>
-                <div className="col-md-4 mb-3">
-                  <label className="form-label">Payment Terms</label>
-                  <div className="input-group input-group-lg">
-                    <input 
-                      type="number" 
-                      className="form-control" 
-                      name="credit_payment_terms_days" 
-                      value={formData.credit.payment_terms_days} 
-                      onChange={handleChange} 
-                      min="0" 
-                    />
-                    <span className="input-group-text">days</span>
-                  </div>
-                </div>
+                {isPostpaid && (
+                  <>
+                    <div className="col-md-4 mb-3">
+                      <label className="form-label">Credit Limit</label>
+                      <div className="input-group input-group-lg">
+                        <span className="input-group-text">$</span>
+                        <input
+                          type="number"
+                          className="form-control"
+                          name="credit_credit_limit"
+                          value={formData.credit.credit_limit ?? ''}
+                          onChange={handleChange}
+                          min="0"
+                          step="0.01"
+                        />
+                        <span className="input-group-text">USD</span>
+                      </div>
+                    </div>
+
+                    <div className="col-md-4 mb-3">
+                      <label className="form-label">Payment Terms</label>
+                      <div className="input-group input-group-lg">
+                        <input
+                          type="number"
+                          className="form-control"
+                          name="credit_payment_terms_days"
+                          value={formData.credit.payment_terms_days ?? ''}
+                          onChange={handleChange}
+                          min="0"
+                        />
+                        <span className="input-group-text">days</span>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+
               </div>
 
               {/* Suspension Section - NUEVO */}
@@ -368,12 +416,12 @@ function CustomerForm() {
                   <div className="d-flex align-items-start">
                     {/* Suspended Toggle */}
                     <div className="form-check form-switch me-4">
-                      <input 
-                        className="form-check-input" 
-                        type="checkbox" 
-                        name="credit_is_suspended" 
+                      <input
+                        className="form-check-input"
+                        type="checkbox"
+                        name="credit_is_suspended"
                         id="credit_is_suspended"
-                        checked={formData.credit.is_suspended} 
+                        checked={formData.credit.is_suspended}
                         onChange={handleSuspendedChange}
                         style={{ width: '3em', height: '1.5em' }}
                       />
@@ -398,11 +446,11 @@ function CustomerForm() {
                         <label className="form-label text-danger">
                           Suspension Reason <span className="text-danger">*</span>
                         </label>
-                        <input 
-                          type="text" 
-                          className="form-control border-danger" 
-                          name="credit_suspension_reason" 
-                          value={formData.credit.suspension_reason} 
+                        <input
+                          type="text"
+                          className="form-control border-danger"
+                          name="credit_suspension_reason"
+                          value={formData.credit.suspension_reason}
                           onChange={handleChange}
                           placeholder="e.g., Overdue payments, Credit limit exceeded..."
                           required

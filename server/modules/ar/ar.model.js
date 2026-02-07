@@ -151,6 +151,13 @@ export const getPaymentHistory = async (customerId, limit = 50) => {
       ap.amount_unapplied,
       ap.apply_method,
       ap.status,
+      CASE 
+        WHEN ap.status = 'CREDIT_BALANCE' THEN 'Credit Balance'
+        WHEN ap.status = 'APPLIED' THEN 'Applied'
+        WHEN ap.status = 'PARTIAL' THEN 'Partial'
+        WHEN ap.status = 'VOIDED' THEN 'Voided'
+        ELSE ap.status
+      END AS status_label,
       ap.reference_number,
       ap.notes,
       ap.created_at,
@@ -183,7 +190,7 @@ export const getPaymentDetail = async (arPaymentId) => {
     LEFT JOIN users u ON ap.created_by_user = u.user_id
     WHERE ap.ar_payment_id = ?
   `
-  
+
   const allocationsSql = `
     SELECT 
       apa.allocation_id,
@@ -191,17 +198,25 @@ export const getPaymentDetail = async (arPaymentId) => {
       apa.payment_uid,
       apa.ticket_number,
       apa.amount_applied,
-      apa.created_at
+      apa.created_at,
+      t.printed_at
+      ,(SELECT full_name FROM sales s JOIN users u ON s.operator_id = u.user_id WHERE s.sale_uid = apa.sale_uid) AS operator_user
+      ,CONCAT(sdf.driver_first_name,' ', sdf.driver_last_name) AS driver_name
+     
     FROM ar_payment_allocations apa
+    JOIN tickets t ON apa.ticket_uid = t.ticket_uid
+    JOIN sale_driver_info sdf ON apa.sale_uid = sdf.sale_uid
+
     WHERE apa.ar_payment_id = ?
     ORDER BY apa.created_at
   `
-  
+
   const header = await query(headerSql, [arPaymentId])
   const allocations = await query(allocationsSql, [arPaymentId])
-  
+
+  //
   if (header.length === 0) return null
-  
+
   return {
     ...header[0],
     allocations
@@ -219,10 +234,112 @@ export const isCustomerSuspended = async (customerId) => {
   `
   const rows = await query(sql, [customerId])
   if (rows.length === 0) return { suspended: false }
-  
+
   return {
     suspended: rows[0].is_suspended === 1,
     reason: rows[0].suspension_reason
+  }
+}
+
+/**
+ * Get ALL A/R payment history with filters and pagination
+ * NOTE: Filtering by created_at (registration date) instead of payment_date
+ * This is intentional per business requirement - users want to filter by when
+ * the payment was recorded in the system, not the payment date on the check/receipt
+ */
+export const getAllPaymentHistory = async (filters = {}) => {
+  const {
+    customer_id,
+    status,
+    date_from,
+    date_to,
+    page = 1,
+    limit = 25
+  } = filters
+
+  const offset = (page - 1) * limit
+  const params = []
+  const conditions = []
+
+  // Build WHERE conditions
+  if (customer_id) {
+    conditions.push('ap.customer_id = ?')
+    params.push(customer_id)
+  }
+
+  if (status) {
+    conditions.push('ap.status = ?')
+    params.push(status)
+  }
+
+  if (date_from) {
+    conditions.push('DATE(ap.created_at) >= ?')
+    params.push(date_from)
+  }
+
+  if (date_to) {
+    conditions.push('DATE(ap.created_at) <= ?')
+    params.push(date_to)
+  }
+
+  const whereClause = conditions.length > 0
+    ? `WHERE ${conditions.join(' AND ')}`
+    : ''
+
+  // Count total records
+  const countSql = `
+    SELECT COUNT(*) AS total
+    FROM ar_payments ap
+    ${whereClause}
+  `
+  const countResult = await query(countSql, params)
+  const total = countResult[0]?.total || 0
+
+  // Get paginated data
+  const dataSql = `
+    SELECT 
+      ap.ar_payment_id,
+      ap.ar_payment_uid,
+      ap.payment_date,
+      ap.amount_received,
+      ap.amount_applied,
+      ap.amount_unapplied,
+      ap.apply_method,
+      ap.status,
+      CASE 
+        WHEN ap.status = 'CREDIT_BALANCE' THEN 'Credit Balance'
+        WHEN ap.status = 'APPLIED' THEN 'Applied'
+        WHEN ap.status = 'PARTIAL' THEN 'Partial'
+        WHEN ap.status = 'VOIDED' THEN 'Voided'
+        ELSE ap.status
+      END AS status_label,
+      ap.reference_number,
+      ap.notes,
+      ap.created_at,
+      pm.name AS payment_method,
+      c.id_customer,
+      c.account_number,
+      c.account_name,
+      u.full_name AS created_by
+    FROM ar_payments ap
+    INNER JOIN payment_methods pm ON ap.method_id = pm.method_id
+    INNER JOIN customers c ON ap.customer_id = c.id_customer
+    LEFT JOIN users u ON ap.created_by_user = u.user_id
+    ${whereClause}
+    ORDER BY ap.created_at DESC
+    LIMIT ? OFFSET ?
+  `
+
+  const data = await query(dataSql, [...params, parseInt(limit), parseInt(offset)])
+
+  return {
+    data,
+    pagination: {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      totalPages: Math.ceil(total / limit)
+    }
   }
 }
 
@@ -234,5 +351,6 @@ export default {
   getPaymentMethods,
   getPaymentHistory,
   getPaymentDetail,
-  isCustomerSuspended
+  isCustomerSuspended,
+  getAllPaymentHistory
 }

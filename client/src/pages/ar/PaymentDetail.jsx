@@ -16,6 +16,7 @@ function PaymentDetail() {
     try {
       const response = await api.get(`/ar/payments/${id}`)
       setPayment(response.data.data)
+      console.log(response.data.data);
     } catch (error) {
       console.error('Error fetching payment detail:', error)
       Swal.fire('Error', 'Could not load payment details', 'error')
@@ -50,7 +51,7 @@ function PaymentDetail() {
     return (
       <div className="container-fluid">
         <div className="alert alert-danger">Payment not found</div>
-        <Link to="/ar/history" className="btn btn-primary">Back to History</Link>
+        <Link to="/ar/all-payments" className="btn btn-primary">Back to History</Link>
       </div>
     )
   }
@@ -68,7 +69,7 @@ function PaymentDetail() {
               </h1>
               <p className="text-muted mb-0">A/R Payment Record</p>
             </div>
-            <Link to="/ar/history" className="btn btn-outline-primary">
+            <Link to="/ar/all-payments" className="btn btn-outline-primary">
               <i className="bi bi-arrow-left me-1"></i>
               Back to History
             </Link>
@@ -180,6 +181,10 @@ function PaymentDetail() {
               <tr>
                 <th>#</th>
                 <th>Ticket #</th>
+                <th>Date</th>
+                <th>Scale Op</th>
+                <th>Driver</th>
+
                 <th className="text-end">Amount Applied</th>
                 <th>Applied At</th>
               </tr>
@@ -189,6 +194,13 @@ function PaymentDetail() {
                 <tr key={a.allocation_id}>
                   <td>{index + 1}</td>
                   <td><strong>{a.ticket_number || a.sale_uid}</strong></td>
+
+                  <td>{formatDateTime(a.printed_at)}</td>
+
+                  <td>{a.operator_user}</td>
+                  <td>{a.driver_name}</td>
+
+
                   <td className="text-end text-success">{formatCurrency(a.amount_applied)}</td>
                   <td>{formatDateTime(a.created_at)}</td>
                 </tr>
@@ -196,8 +208,14 @@ function PaymentDetail() {
             </tbody>
             <tfoot className="table-light">
               <tr>
+                <th></th>
+                <th></th>
+                <th></th>
+                
+
                 <th colSpan="2">Total Applied</th>
                 <th className="text-end text-success">{formatCurrency(payment.amount_applied)}</th>
+                <th></th>
                 <th></th>
               </tr>
             </tfoot>

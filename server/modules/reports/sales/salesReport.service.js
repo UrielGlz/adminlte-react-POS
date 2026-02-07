@@ -108,9 +108,12 @@ export const getData = async (filters = {}) => {
   if (status_id && status_id !== 'all') {
     sql += ` AND s.sale_status_id = ?`
     params.push(status_id)
+  }else{//SIEMPRE PINTAR SOLO LAS VENTAS COMPLETADAS, PARA LAS CANCELADAS ES NECESARIO FILTRAR POR ELLAS
+    sql += ` AND s.sale_status_id = 2`
+ 
   }
 
-  sql += ` ORDER BY s.created_at DESC, s.sale_id DESC`
+  sql += ` ORDER BY s.created_at ASC, s.sale_id ASC`
 
   const data = await query(sql, params)
 
@@ -137,7 +140,7 @@ export const getFilterOptions = async () => {
     query(`SELECT id_customer as value, account_name as label FROM customers WHERE is_active = 1 ORDER BY account_name`),
     query(`SELECT user_id as value, full_name as label FROM users WHERE is_active = 1 ORDER BY full_name`),
     query(`SELECT method_id as value, name as label FROM payment_methods WHERE is_active = 1 ORDER BY name`),
-    query(`SELECT status_id as value, label as label FROM status_catalogo WHERE is_active = 1 AND module = 'SALES' ORDER BY sort_order`)
+    query(`SELECT status_id as value, label as label FROM status_catalogo WHERE is_active = 1 AND module = 'SALES' AND code IN ('COMPLETED','CANCELLED')   ORDER BY sort_order`)
   ])
 
   return {

@@ -64,7 +64,27 @@ export const getPaymentDetail = async (req, res, next) => {
     next(error)
   }
 }
-
+/**
+ * GET /api/ar/payments/all-history
+ * Get all payment history with filters and pagination
+ */
+export const getAllPaymentHistory = async (req, res, next) => {
+  try {
+    const filters = {
+      customer_id: req.query.customer_id || null,
+      status: req.query.status || null,
+      date_from: req.query.date_from || null,
+      date_to: req.query.date_to || null,
+      page: req.query.page || 1,
+      limit: req.query.limit || 25
+    }
+    
+    const result = await ArService.getAllPaymentHistory(filters)
+    success(res, result)
+  } catch (error) {
+    next(error)
+  }
+}
 export default {
   getCustomers,
   getCustomerSummary,
@@ -72,5 +92,6 @@ export default {
   getPaymentHistory,
   getPaymentMethods,
   applyPayment,
-  getPaymentDetail
+  getPaymentDetail,
+  getAllPaymentHistory
 }

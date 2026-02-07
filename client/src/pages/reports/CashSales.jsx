@@ -4,6 +4,9 @@ import api from '../../services/api'
 import Swal from 'sweetalert2'
 
 function CashSales() {
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
+
   const [data, setData] = useState({ transactions: [], totals: {} })
   const [filterOptions, setFilterOptions] = useState({})
   const [loading, setLoading] = useState(false)
@@ -45,6 +48,7 @@ function CashSales() {
       const response = await api.get(`/reports/cash-sales?${params}`)
       console.log(response.data.data);
       setData(response.data.data)
+      setPage(1)
     } catch (error) {
       Swal.fire('Error', 'Could not load report data', 'error')
     } finally {
@@ -54,6 +58,8 @@ function CashSales() {
 
   const handleFilterChange = (e) => {
     setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }))
+    setPage(1)
+
   }
 
   const applyFilters = () => fetchData()
@@ -136,7 +142,14 @@ function CashSales() {
     return styles[statusCode] || 'bg-secondary'
   }
 
-  const { transactions, totals } = data
+  const { transactions = [], totals = {} } = data
+  const totalRows = transactions.length
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))
+  const safePage = Math.min(Math.max(page, 1), totalPages)
+
+  const start = (safePage - 1) * pageSize
+  const end = start + pageSize
+  const pagedTransactions = transactions.slice(start, end)
 
   return (
     <div className="container-fluid p-4">
@@ -396,14 +409,16 @@ function CashSales() {
                   <thead className="table-dark sticky-top">
                     <tr>
                       <th>Ticket #</th>
-                      <th>Type</th>
+                      <th>Service</th>
                       <th>Date</th>
                       <th>Driver</th>
-                      <th>Phone</th>
+                      <th>Triler #</th>
+                      <th>Tractor #</th>
+                      <th>Scale Op</th>
                       <th>Plates</th>
                       <th className="text-end">Weight</th>
-                      <th className="text-end">Subtotal</th>
-                      <th className="text-end">Tax</th>
+                      {/* <th className="text-end">Subtotal</th> */}
+                      {/* <th className="text-end">Tax</th> */}
                       <th className="text-end">Total</th>
                       <th className="text-end">Paid</th>
                       <th>Method</th>
@@ -411,7 +426,7 @@ function CashSales() {
                     </tr>
                   </thead>
                   <tbody>
-                    {transactions.map(row => (
+                    {pagedTransactions.map(row => (
                       <tr key={row.ticket_id}>
                         <td><code>{row.ticket_number}</code></td>
                         <td>
@@ -424,11 +439,17 @@ function CashSales() {
                         </td>
                         <td className="small">{formatDate(row.sale_date)}</td>
                         <td>{row.driver_first_name} {row.driver_last_name}</td>
-                        <td className="small">{row.driver_phone || '-'}</td>
-                        <td>{row.vehicle_plates || '-'}</td>
+
+                        <td className="small">{row.trailer_number}</td>
+                        <td className="small">{row.tractor_number}</td>
+                        <td className="small">{row.operator_name}</td>
+                        <td className="small">{row.vehicle_plates}</td>
+
+                        {/* <td className="small">{row.driver_phone || '-'}</td> */}
+                        {/* <td>{row.vehicle_plates || '-'}</td> */}
                         <td className="text-end">{formatNumber(row.gross_weight)}</td>
-                        <td className="text-end">{formatCurrency(row.subtotal)}</td>
-                        <td className="text-end">{formatCurrency(row.tax_amount)}</td>
+                        {/* <td className="text-end">{formatCurrency(row.subtotal)}</td> */}
+                        {/* <td className="text-end">{formatCurrency(row.tax_amount)}</td> */}
                         <td className="text-end fw-bold">{formatCurrency(row.total_amount)}</td>
                         <td className="text-end">{formatCurrency(row.amount_paid)}</td>
                         <td>{row.payment_method || '-'}</td>
@@ -443,6 +464,34 @@ function CashSales() {
                 </table>
               </div>
             )}
+            <div className="d-flex flex-wrap justify-content-between align-items-center p-3 gap-2">
+              <small className="text-muted">
+                Showing <b>{totalRows === 0 ? 0 : start + 1}</b>–<b>{Math.min(end, totalRows)}</b> of <b>{totalRows}</b>
+              </small>
+
+              <div className="d-flex align-items-center gap-2">
+                <select
+                  className="form-select form-select-sm"
+                  style={{ width: 110 }}
+                  value={pageSize}
+                  onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }}
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+
+                <div className="btn-group">
+                  <button className="btn btn-outline-secondary btn-sm" disabled={safePage === 1} onClick={() => setPage(1)}>«</button>
+                  <button className="btn btn-outline-secondary btn-sm" disabled={safePage === 1} onClick={() => setPage(safePage - 1)}>‹</button>
+                  <button className="btn btn-outline-secondary btn-sm" disabled>{safePage} / {totalPages}</button>
+                  <button className="btn btn-outline-secondary btn-sm" disabled={safePage === totalPages} onClick={() => setPage(safePage + 1)}>›</button>
+                  <button className="btn btn-outline-secondary btn-sm" disabled={safePage === totalPages} onClick={() => setPage(totalPages)}>»</button>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
       )}

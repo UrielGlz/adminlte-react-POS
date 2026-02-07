@@ -6,7 +6,8 @@ export const getData = async (req, res, next) => {
     const filters = {
       customer_id: req.query.customer_id || null,
       date_from: req.query.date_from || null,
-      date_to: req.query.date_to || null
+      date_to: req.query.date_to || null,
+      include_tickets: req.query.include_tickets || null
     }
     const result = await CustomerStatementService.getData(filters)
     success(res, result)
@@ -25,15 +26,16 @@ export const downloadPdf = async (req, res, next) => {
     const filters = {
       customer_id: req.query.customer_id || null,
       date_from: req.query.date_from || null,
-      date_to: req.query.date_to || null
+      date_to: req.query.date_to || null,
+      include_tickets: req.query.include_tickets || null
     }
 
     if (!filters.customer_id) {
       return res.status(400).json({ success: false, message: 'Customer is required' })
     }
-    
+
     const buffer = await CustomerStatementService.generatePdf(filters)
-    
+
     res.setHeader('Content-Type', 'application/pdf')
     res.setHeader('Content-Disposition', `attachment; filename=customer-statement-${Date.now()}.pdf`)
     res.send(buffer)
@@ -45,15 +47,16 @@ export const downloadExcel = async (req, res, next) => {
     const filters = {
       customer_id: req.query.customer_id || null,
       date_from: req.query.date_from || null,
-      date_to: req.query.date_to || null
+      date_to: req.query.date_to || null,
+      include_tickets: req.query.include_tickets || null
     }
 
     if (!filters.customer_id) {
       return res.status(400).json({ success: false, message: 'Customer is required' })
     }
-    
+
     const buffer = await CustomerStatementService.generateExcel(filters)
-    
+
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     res.setHeader('Content-Disposition', `attachment; filename=customer-statement-${Date.now()}.xlsx`)
     res.send(buffer)

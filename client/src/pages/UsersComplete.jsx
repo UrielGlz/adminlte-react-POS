@@ -3,6 +3,9 @@ import api from '../services/api'
 import { showAlert, showToast, confirmAction } from '../utils/alerts'
 
 function UsersComplete() {
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
+
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -23,6 +26,8 @@ function UsersComplete() {
   useEffect(() => {
     loadUsers()
   }, [])
+  useEffect(() => { setPage(1) }, [searchTerm])
+
 
   const loadUsers = async () => {
     setLoading(true)
@@ -32,7 +37,9 @@ function UsersComplete() {
 
       // La respuesta viene en response.data.data (paginada)
       setUsers(response.data.data || [])
-      setPagination(response.data.pagination || { page: 1, total: 0, totalPages: 1 })
+
+      setPage(1)
+
     } catch (error) {
       console.error('Error loading users:', error)
       setUsers([])
@@ -162,6 +169,13 @@ function UsersComplete() {
     (user.full_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
     (user.email?.toLowerCase() || '').includes(searchTerm.toLowerCase())
   )
+  const totalRows = filteredUsers.length
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))
+  const safePage = Math.min(Math.max(page, 1), totalPages)
+
+  const start = (safePage - 1) * pageSize
+  const end = start + pageSize
+  const pagedUsers = filteredUsers.slice(start, end)
 
   const getRoleBadge = (role) => {
     const badges = {
@@ -177,7 +191,7 @@ function UsersComplete() {
   //   if (!dateString) return '-'
   //   return new Date(dateString).toLocaleDateString('es-MX')
   // }
-   const formatDate = (dateString) => {
+  const formatDate = (dateString) => {
     if (!dateString) return '-'
     return new Date(dateString).toLocaleString('en-US', {
       timeZone: 'America/Matamoros', // Reynosa (frontera)
@@ -316,7 +330,7 @@ function UsersComplete() {
                       <th>Status</th>
                       <th>Created</th>
                       <th>Created</th>
-                      <th>Created By</th> 
+                      <th>Created By</th>
                       <th>Last Edit By</th>
                       <th style={{ width: '150px' }}>Actions</th>
                     </tr>
@@ -330,7 +344,7 @@ function UsersComplete() {
                         </td>
                       </tr>
                     ) : (
-                      filteredUsers.map((user) => (
+                      pagedUsers.map((user) => (
                         <tr key={user.user_id}>
                           <td>{user.user_id}</td>
                           <td>
@@ -413,14 +427,30 @@ function UsersComplete() {
             <div className="card-footer clearfix">
               <div className="float-start">
                 <span className="text-muted">
-                  Showing {filteredUsers.length} of {pagination.total} users
+                  Showing {totalRows === 0 ? 0 : start + 1}-{Math.min(end, totalRows)} of {totalRows} users
+
                 </span>
               </div>
               <ul className="pagination pagination-sm m-0 float-end">
-                <li className="page-item"><a className="page-link" href="#">«</a></li>
-                <li className="page-item active"><a className="page-link" href="#">1</a></li>
-                <li className="page-item"><a className="page-link" href="#">»</a></li>
+                <li className={`page-item ${safePage === 1 ? 'disabled' : ''}`}>
+                  <button className="page-link" onClick={() => setPage(1)}>«</button>
+                </li>
+                <li className={`page-item ${safePage === 1 ? 'disabled' : ''}`}>
+                  <button className="page-link" onClick={() => setPage(safePage - 1)}>‹</button>
+                </li>
+
+                <li className="page-item active">
+                  <span className="page-link">{safePage} / {totalPages}</span>
+                </li>
+
+                <li className={`page-item ${safePage === totalPages ? 'disabled' : ''}`}>
+                  <button className="page-link" onClick={() => setPage(safePage + 1)}>›</button>
+                </li>
+                <li className={`page-item ${safePage === totalPages ? 'disabled' : ''}`}>
+                  <button className="page-link" onClick={() => setPage(totalPages)}>»</button>
+                </li>
               </ul>
+
             </div>
           </div>
 
@@ -511,9 +541,9 @@ function UsersComplete() {
                             value={formData.role_code}
                             onChange={(e) => setFormData({ ...formData, role_code: e.target.value })}
                             required
-                          >                          
-                            <option value="">Select an option</option>    
-                            <option value="OPERATOR">Operator</option>                            
+                          >
+                            <option value="">Select an option</option>
+                            <option value="OPERATOR">Operator</option>
                             <option value="ADMINISTRATOR">Administrator</option>
                             <option value="ACCOUNTING">Accounting</option>
 

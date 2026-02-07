@@ -5,6 +5,7 @@ import ExcelJS from 'exceljs'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
+import QRCode from 'qrcode'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -13,6 +14,13 @@ const __dirname = path.dirname(__filename)
  * Customer Statement Report Service
  */
 
+const PT_PER_INCH = 72
+const TICKET_W = 9.5 * PT_PER_INCH   // 684
+
+const TICKET_H = 7.0 * PT_PER_INCH   // 468  (más alto)
+
+const asBool = (v) => String(v || '0') === '1' || String(v || '').toLowerCase() === 'true'
+
 const getLogoPath = (logoFilename) => {
   if (!logoFilename) return null
   const logoPath = path.join(__dirname, '../../../assets/images', logoFilename)
@@ -20,6 +28,50 @@ const getLogoPath = (logoFilename) => {
   const defaultLogo = path.join(__dirname, '../../../assets/images/default-logo.png')
   if (fs.existsSync(defaultLogo)) return defaultLogo
   return null
+}
+
+const truthy = (v) => {
+  const s = (v ?? '').toString().trim().toLowerCase()
+  return s === '1' || s === 'true' || s === 'yes' || s === 'y'
+}
+
+const toInt0 = (v) => {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return 0
+  return Math.round(n)
+}
+
+const formatTicketDate = (date) => {
+  if (!date) return '-'
+  return new Date(date).toLocaleDateString('en-US', {
+    timeZone: 'America/Matamoros',
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric'
+  })
+}
+
+const formatTicketTime = (date) => {
+  if (!date) return '-'
+  return new Date(date).toLocaleTimeString('en-US', {
+    timeZone: 'America/Matamoros',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  })
+}
+
+const ticketHeaderLines = [
+  'McAllen Foreign Trade Zone',
+  'Certified Public Truck Scale',
+  '6401 S. 33rd Street · McAllen, Texas 78503',
+  '(956) 682-4306 · (956) 882-9111 Fax',
+  'Certificate No. 036231',
+  'Website: http://www.mftz.org    Email: fizinfo@mftz.org'
+]
+
+const buildQrPayload = ({ sale_uid, ticket_uid, payment_uid }) => {
+  return JSON.stringify({ sale_uid, ticket_uid, payment_uid })
 }
 
 /**
@@ -55,7 +107,6 @@ export const getCustomerInfo = async (customerId) => {
 
 /**
  * Obtener transacciones/tickets del cliente
- * MODIFICADO: Agregados campos trailer_number, tractor_number, operator_name
  */
 export const getCustomerTransactions = async (customerId, dateFrom, dateTo) => {
   const params = [customerId]
@@ -63,6 +114,7 @@ export const getCustomerTransactions = async (customerId, dateFrom, dateTo) => {
   let sql = `
     SELECT 
       t.ticket_id,
+      t.ticket_uid,
       t.ticket_number,
       t.printed_at,
       t.reprint_count,
@@ -73,11 +125,12 @@ export const getCustomerTransactions = async (customerId, dateFrom, dateTo) => {
       s.subtotal,
       s.tax_total as tax_amount,
       s.total as total_amount,
+      s.total as weigh_fee,
       s.amount_paid,
       s.balance_due,
       p.name as product_type,
-      ssa.weight_lb as gross_weight,
       pm.name as payment_method,
+      pay.payment_uid,
       pay.amount as payment_amount,
       pay.received_at as payment_date,
       pay_st.code as payment_status_code,
@@ -89,17 +142,23 @@ export const getCustomerTransactions = async (customerId, dateFrom, dateTo) => {
       sdi.driver_first_name,
       sdi.driver_last_name,
       sdi.vehicle_plates,
-      sdi.product_description as driver_product,
+      sdi.license_state,
+      p.name as driver_product,
       sdi.trailer_number,
       sdi.tractor_number,
-      u.full_name AS operator_name
+      u.full_name AS operator_name,
+      ssa.eje1,
+      ssa.eje2,
+      ssa.eje3,
+      ssa.peso_total,
+      ssa.weight_lb as gross_weight
     FROM tickets t
     JOIN sales s ON t.sale_uid = s.sale_uid
     JOIN sale_driver_info sdi ON s.sale_uid = sdi.sale_uid
     JOIN customers c ON sdi.account_number = c.account_number
     JOIN sale_lines sl ON s.sale_uid = sl.sale_uid
     JOIN products p ON sl.product_id = p.product_id
-    JOIN scale_session_axles ssa ON sdi.match_key = ssa.uuid_weight
+    LEFT JOIN scale_session_axles ssa ON sdi.match_key = ssa.uuid_weight
     LEFT JOIN payments pay ON s.sale_uid = pay.sale_uid
     LEFT JOIN payment_methods pm ON pay.method_id = pm.method_id
     LEFT JOIN status_catalogo pay_st ON pay.payment_status_id = pay_st.status_id AND pay_st.module = 'PAYMENTS'
@@ -118,8 +177,7 @@ export const getCustomerTransactions = async (customerId, dateFrom, dateTo) => {
     params.push(dateTo)
   }
 
-  sql += ` ORDER BY s.created_at DESC, t.ticket_id DESC`
-
+  sql += ` ORDER BY s.created_at ASC, t.ticket_id ASC`
   return await query(sql, params)
 }
 
@@ -183,15 +241,15 @@ export const getFilterOptions = async () => {
 }
 
 /**
- * Generar PDF (SIN CAMBIOS)
+ * Generar PDF
  */
 export const generatePdf = async (filters = {}) => {
   const { customer, transactions, totals } = await getData(filters)
   const settings = await getReportSettings()
 
-  if (!customer) {
-    throw new Error('Customer not found')
-  }
+  if (!customer) throw new Error('Customer not found')
+
+  const includeTickets = asBool(filters.include_tickets)
 
   const formatCurrency = (val) => {
     if (val === null || val === undefined) return '$0.00'
@@ -203,21 +261,44 @@ export const generatePdf = async (filters = {}) => {
     return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val)
   }
 
-  const formatDate = (date) => {
-    if (!date) return '-'
-    return new Date(date).toLocaleDateString('en-US', {
-      year: 'numeric', month: 'short', day: 'numeric'
-    })
-  }
-
   const formatDateTime = (date) => {
     if (!date) return '-'
     return new Date(date).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      timeZone: 'America/Matamoros',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     })
   }
 
   const logoPath = getLogoPath(settings.companyLogo)
+
+  // Pre-generar QRs
+  const ticketPages = includeTickets
+    ? await Promise.all(
+      transactions.map(async (t) => {
+        const payload = buildQrPayload({
+          sale_uid: t.sale_uid,
+          ticket_uid: t.ticket_uid,
+          payment_uid: t.payment_uid
+        })
+
+        const qrPng = await QRCode.toBuffer(payload, {
+          type: 'png',
+          errorCorrectionLevel: 'M',
+          margin: 0,
+          scale: 4
+        })
+
+        return {
+          ...t,
+          qrPng,
+          weigh_fee_text: formatCurrency(t.weigh_fee ?? t.total_amount ?? 0)
+        }
+      })
+    )
+    : []
 
   return new Promise((resolve, reject) => {
     try {
@@ -228,7 +309,7 @@ export const generatePdf = async (filters = {}) => {
       })
 
       const buffers = []
-      doc.on('data', buffers.push.bind(buffers))
+      doc.on('data', (c) => buffers.push(c))
       doc.on('end', () => resolve(Buffer.concat(buffers)))
       doc.on('error', reject)
 
@@ -245,12 +326,16 @@ export const generatePdf = async (filters = {}) => {
       const marginLeft = 40
       const marginRight = 40
       const contentWidth = pageWidth - marginLeft - marginRight
-      const footerY = pageHeight - 35
+
+      const footerY = pageHeight - 40 - 12
+      const footerLineY = footerY - 6
+
       const rowHeight = 14
 
       const headerAreaHeight = 200
       const tableHeaderHeight = 16
       const footerHeight = 40
+
       const availableForRows = pageHeight - 100 - tableHeaderHeight - footerHeight
       const rowsFirstPage = Math.floor((pageHeight - headerAreaHeight - tableHeaderHeight - footerHeight) / rowHeight)
       const rowsPerPage = Math.floor(availableForRows / rowHeight)
@@ -259,10 +344,13 @@ export const generatePdf = async (filters = {}) => {
       let currentPage = 1
       let rowIndex = 0
 
-      const dateRange = [
-        filters.date_from ? `From: ${filters.date_from}` : '',
-        filters.date_to ? `To: ${filters.date_to}` : ''
-      ].filter(Boolean).join(' - ') || 'All time'
+      const dateRange =
+        [
+          filters.date_from ? `From: ${filters.date_from}` : '',
+          filters.date_to ? `To: ${filters.date_to}` : ''
+        ]
+          .filter(Boolean)
+          .join(' - ') || 'All time'
 
       const drawMainHeader = () => {
         const headerTop = 20
@@ -270,17 +358,31 @@ export const generatePdf = async (filters = {}) => {
         if (logoPath) {
           try {
             doc.image(logoPath, marginLeft, headerTop, { fit: [60, 35] })
-          } catch (e) { /* ignore */ }
+          } catch (e) {
+            /* ignore */
+          }
         }
 
-        doc.fontSize(14).fillColor(primaryColor).font('Helvetica-Bold')
+        doc
+          .fontSize(14)
+          .fillColor(primaryColor)
+          .font('Helvetica-Bold')
           .text(settings.companyName, marginLeft + 70, headerTop + 5, { width: contentWidth - 140, align: 'center' })
 
-        doc.fontSize(11).fillColor('#333333').font('Helvetica-Bold')
+        doc
+          .fontSize(11)
+          .fillColor('#333333')
+          .font('Helvetica-Bold')
           .text('Customer Statement', marginLeft + 70, headerTop + 22, { width: contentWidth - 140, align: 'center' })
 
-        doc.fontSize(8).fillColor(textGray).font('Helvetica')
-          .text(`Generated: ${new Date().toLocaleString('en-US')}`, pageWidth - marginRight - 120, headerTop + 8, { width: 120, align: 'right' })
+        doc
+          .fontSize(8)
+          .fillColor(textGray)
+          .font('Helvetica')
+          .text(`Generated: ${new Date().toLocaleString('en-US')}`, pageWidth - marginRight - 120, headerTop + 8, {
+            width: 120,
+            align: 'right'
+          })
           .text(dateRange, pageWidth - marginRight - 120, headerTop + 20, { width: 120, align: 'right' })
 
         doc.moveTo(marginLeft, 65).lineTo(pageWidth - marginRight, 65).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
@@ -288,8 +390,7 @@ export const generatePdf = async (filters = {}) => {
         let yPos = 75
 
         doc.rect(marginLeft, yPos, contentWidth, 18).fill(headerBg)
-        doc.fontSize(10).fillColor('#FFFFFF').font('Helvetica-Bold')
-          .text('Customer Information', marginLeft + 5, yPos + 4)
+        doc.fontSize(10).fillColor('#FFFFFF').font('Helvetica-Bold').text('Customer Information', marginLeft + 5, yPos + 4)
 
         yPos += 22
 
@@ -320,8 +421,7 @@ export const generatePdf = async (filters = {}) => {
         yPos += 75
 
         doc.rect(marginLeft, yPos, contentWidth, 18).fill('#E7E6E6')
-        doc.fontSize(10).fillColor('#333333').font('Helvetica-Bold')
-          .text('Statement Summary', marginLeft + 5, yPos + 4)
+        doc.fontSize(10).fillColor('#333333').font('Helvetica-Bold').text('Statement Summary', marginLeft + 5, yPos + 4)
 
         yPos += 22
         doc.fontSize(8).font('Helvetica')
@@ -348,11 +448,17 @@ export const generatePdf = async (filters = {}) => {
       }
 
       const drawSimpleHeader = () => {
-        doc.fontSize(10).fillColor(primaryColor).font('Helvetica-Bold')
-          .text(`${settings.companyName} - Customer Statement`, marginLeft, 25)
-        doc.fontSize(9).fillColor('#333333').font('Helvetica')
+        doc.fontSize(10).fillColor(primaryColor).font('Helvetica-Bold').text(`${settings.companyName} - Customer Statement`, marginLeft, 25)
+
+        doc
+          .fontSize(9)
+          .fillColor('#333333')
+          .font('Helvetica')
           .text(`${customer.account_name} (${customer.account_number})`, marginLeft, 40)
-        doc.fontSize(8).fillColor(textGray)
+
+        doc
+          .fontSize(8)
+          .fillColor(textGray)
           .text(`Page ${currentPage} of ${totalPages}`, pageWidth - marginRight - 60, 30, { width: 60, align: 'right' })
 
         doc.moveTo(marginLeft, 55).lineTo(pageWidth - marginRight, 55).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
@@ -361,8 +467,16 @@ export const generatePdf = async (filters = {}) => {
       }
 
       const drawFooter = () => {
+        doc.save()
+        doc.strokeColor('#E5E7EB').lineWidth(0.7)
+        doc.moveTo(marginLeft, footerLineY).lineTo(pageWidth - marginRight, footerLineY).stroke()
+        doc.restore()
+
         doc.fontSize(7).fillColor(textGray).font('Helvetica')
-        doc.text(settings.companyAddress || '', marginLeft, footerY)
+
+        const leftText = settings.companyAddress || ''
+        doc.text(leftText, marginLeft, footerY, { width: contentWidth, align: 'left', lineBreak: false })
+
         doc.text(`Page ${currentPage} of ${totalPages}`, pageWidth - marginRight - 60, footerY, { width: 60, align: 'right' })
       }
 
@@ -405,7 +519,13 @@ export const generatePdf = async (filters = {}) => {
 
         if (yPos + rowHeight > pageHeight - footerHeight) {
           drawFooter()
-          doc.addPage()
+
+          doc.addPage({
+            size: 'LETTER',
+            layout: 'portrait',
+            margins: { top: 40, bottom: 40, left: 40, right: 40 }
+          })
+
           currentPage++
           yPos = drawSimpleHeader()
           yPos = drawTableHeader(yPos)
@@ -451,16 +571,388 @@ export const generatePdf = async (filters = {}) => {
       }
 
       const tableStartY = currentPage === 1 ? headerAreaHeight : 65
-      doc.rect(tableLeft, tableStartY, tableWidth, yPos - tableStartY)
-        .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
+      doc.rect(tableLeft, tableStartY, tableWidth, yPos - tableStartY).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
 
       drawFooter()
+
+      // ====== Tickets al final ======
+      if (includeTickets && ticketPages.length > 0) {
+        ticketPages.forEach((t) => {
+          if (t.eje1 == null) t.eje1 = 0
+          if (t.eje2 == null) t.eje2 = 0
+          if (t.eje3 == null) t.eje3 = 0
+          if (t.peso_total == null) t.peso_total = 0
+
+          drawTicketPage(doc, t, logoPath)
+        })
+      }
+
       doc.end()
     } catch (error) {
       reject(error)
     }
   })
 }
+
+/**
+ * Dibuja una página de ticket completa (LETTER landscape con ticket centrado)
+ */
+export function drawTicketPage(doc, t, logoPath) {
+  doc.addPage({
+    size: [TICKET_W, TICKET_H],   // <-- 612 x 396 (8.5 x 5.5)
+    margins: { top: 0, bottom: 0, left: 0, right: 0 }
+  })
+
+
+  drawTicket612x396(doc, t, logoPath)
+
+}
+
+/**
+ * Dibuja el ticket en un canvas de 612x396 (mitad de LETTER horizontal)
+ * MEJORADO: diseño más fiel al ticket original del POS
+ */
+export  function drawTicket612x396(doc, t, logoPath) {
+  const W = TICKET_W
+  const H = TICKET_H
+  const MARGIN = 20
+
+  // Borde exterior
+  doc.save()
+  doc.lineWidth(1.5)
+  doc.strokeColor('#000000')
+  doc.rect(MARGIN, MARGIN, W - MARGIN * 2, H - MARGIN * 2)
+  doc.stroke()
+  doc.restore()
+
+  // =======================
+  // 1) Columnas tipo WPF (3* / 2*)  <<< CLAVE
+  // =======================
+  const contentX = MARGIN + 15
+  const contentY = MARGIN + 15
+  const contentW = W - (MARGIN + 15) * 2
+
+  const COL_GAP = 18
+  const LEFT_W = Math.round(contentW * 0.60)      // 3/5
+  const RIGHT_X = contentX + LEFT_W + COL_GAP      // inicio col derecha
+  const RIGHT_W = (contentX + contentW) - RIGHT_X  // ancho col derecha
+
+  const rightColX = RIGHT_X
+
+  // ========== LOGO (top left) ==========
+  const logoW = 70
+  const logoH = 50
+  const logoX = contentX
+  const logoY = contentY
+
+  if (logoPath) {
+    try {
+      doc.image(logoPath, logoX, logoY, { fit: [logoW, logoH], align: 'center', valign: 'center' })
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // ========== HEADER CENTER ==========
+  const headerCenterX = contentX + 95
+  let headerY = contentY + 5
+
+  doc.font('Helvetica-Bold').fontSize(14).fillColor('#000000')
+  doc.text('McAllen Foreign Trade Zone', headerCenterX, headerY, { width: 280, align: 'center' })
+  headerY += 18
+
+  doc.fontSize(12)
+  doc.text('Certified Public Truck Scale', headerCenterX, headerY, { width: 280, align: 'center' })
+  headerY += 16
+
+  doc.font('Helvetica').fontSize(9)
+  doc.text('6401 S. 33rd Street · McAllen, Texas 78503', headerCenterX, headerY, { width: 280, align: 'center' })
+  headerY += 12
+
+  doc.text('(956) 682-4306 · (956) 882-9111 Fax', headerCenterX, headerY, { width: 280, align: 'center' })
+  headerY += 12
+
+  doc.text('Certificate No. 036231', headerCenterX, headerY, { width: 280, align: 'center' })
+  headerY += 12
+
+  doc.text('Website: http://www.mftz.org    Email: fizinfo@mftz.org', headerCenterX, headerY, { width: 320, align: 'center' })
+
+  // ========== TICKET NUMBER (top right) ==========
+  const ticketX = W - MARGIN - 135
+  const ticketY = contentY
+
+  doc.font('Helvetica-Bold').fontSize(11).fillColor('#000000')
+  doc.text('TICKET', ticketX, ticketY, { width: 120, align: 'right' })
+
+  doc.fontSize(24)
+  doc.text(String(t.ticket_number || ''), ticketX, ticketY + 16, { width: 120, align: 'right' })
+
+  // ========== QR CODE (below ticket number) ==========
+  const qrSize = 90
+  const qrX = RIGHT_X + RIGHT_W - qrSize
+  const qrY = contentY + 55
+
+  doc.save()
+  doc.lineWidth(1)
+  doc.strokeColor('#000000')
+  doc.rect(qrX, qrY, qrSize, qrSize)
+  doc.stroke()
+  doc.restore()
+
+  if (t.qrPng) {
+    try {
+      doc.image(t.qrPng, qrX + 3, qrY + 3, { fit: [qrSize - 6, qrSize - 6] })
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // ========== DRIVER INFO (left column) ==========
+  const driverX = contentX
+  const driverY = contentY + 115
+
+  const driverName = [t.driver_first_name, t.driver_last_name].filter(Boolean).join(' ') || '-'
+
+  doc.font('Helvetica-Bold').fontSize(10).fillColor('#000000')
+  doc.text('Driver:', driverX, driverY, { continued: true })
+  doc.font('Helvetica').text(`  ${driverName}`)
+
+  let infoY = driverY + 18
+  doc.font('Helvetica-Bold').fontSize(9)
+  doc.text('Lic. Plates:', driverX, infoY)
+
+  infoY += 14
+  doc.font('Helvetica')
+  doc.text(t.vehicle_plates || '-', driverX, infoY)
+
+  infoY += 18
+  doc.font('Helvetica-Bold')
+  doc.text('Lic. State:', driverX, infoY)
+
+  infoY += 14
+  doc.font('Helvetica')
+  doc.text(t.license_state || '-', driverX, infoY)
+
+  // ========== TRACTOR/TRAILER/TIME (right column) ==========
+  let rightY = driverY + 18
+
+  doc.font('Helvetica-Bold').fontSize(9)
+  doc.text('Tractor#:', rightColX, rightY)
+  rightY += 14
+  doc.font('Helvetica')
+  doc.text(t.tractor_number || '-', rightColX, rightY)
+
+  rightY += 18
+  doc.font('Helvetica-Bold')
+  doc.text('Trailer#:', rightColX, rightY)
+  rightY += 14
+  doc.font('Helvetica')
+  doc.text(t.trailer_number || '-', rightColX, rightY)
+
+  rightY += 18
+  doc.font('Helvetica-Bold')
+  doc.text('Time:', rightColX, rightY, { continued: true })
+  doc.font('Helvetica')
+  doc.text(`  ${formatTicketTime(t.printed_at)}`)
+
+  // ========== DATE / WEIGHER BOXES ==========
+  const boxY = contentY + 210
+  const boxH = 22
+
+  // Date
+  doc.font('Helvetica-Bold').fontSize(9)
+  doc.text('Date', contentX, boxY)
+
+  doc.save()
+  doc.lineWidth(1)
+  doc.strokeColor('#000000')
+  doc.rect(contentX, boxY + 14, LEFT_W, boxH)
+  doc.stroke()
+  doc.restore()
+
+  doc.font('Helvetica').fontSize(8.5)
+  doc.text(formatTicketDate(t.printed_at), contentX + 5, boxY + 19)
+
+  // Weigher
+  doc.font('Helvetica-Bold').fontSize(9)
+  doc.text('Weigher', RIGHT_X, boxY)
+
+  doc.save()
+  doc.lineWidth(1)
+  doc.strokeColor('#000000')
+  doc.rect(RIGHT_X, boxY + 14, RIGHT_W, boxH)
+  doc.stroke()
+  doc.restore()
+
+  doc.font('Helvetica').fontSize(8.5)
+  doc.text(t.operator_name || '-', RIGHT_X + 5, boxY + 19, { width: RIGHT_W - 10 })
+
+  // =======================
+  // 4) Product (SOLO col izquierda)
+  // =======================
+  const prodY = boxY + 46
+  const fieldH = 22
+
+  doc.font('Helvetica-Bold').fontSize(9)
+  doc.text('Product', contentX, prodY)
+
+  doc.save()
+  doc.lineWidth(1)
+  doc.strokeColor('#000000')
+  doc.rect(contentX, prodY + 14, LEFT_W, fieldH)
+  doc.stroke()
+  doc.restore()
+
+  doc.font('Helvetica').fontSize(8.5)
+  doc.text(t.driver_product || '-', contentX + 5, prodY + 19, { width: LEFT_W - 10 })
+
+  // =======================
+  // 5) Signature (izquierda)
+  // =======================
+  const signY = prodY + 50
+  doc.font('Helvetica').fontSize(8.5)
+  doc.text('Signature: ___________________________', contentX, signY)
+
+  doc.fontSize(7)
+  doc.text(
+    'ALL RE-WEIGHS MUST BE DONE WITHIN 12 HOURS OF ORIGINAL WEIGH TIME.',
+    contentX,
+    signY + 13,
+    { width: LEFT_W }
+  )
+
+  // =======================
+  // 6) RIGHT SIDE: Weigh Fee + Scales + Reweigh (sin empalmes)
+  //    BUG FIX: el Weigh Fee ya NO se dibuja “fijo” a prodY.
+  //    Ahora se coloca relativo al bloque de scales (siempre arriba de scales).
+  // =======================
+
+  const scaleLabelW = 78
+  const scaleValW = RIGHT_W - scaleLabelW
+
+  const scaleRows = [
+    { label: 'SCALE 1:', val: toInt0(t.eje1) },
+    { label: 'SCALE 2:', val: toInt0(t.eje2) },
+    { label: 'SCALE 3:', val: toInt0(t.eje3) },
+    { label: 'Total Gross:', val: toInt0(t.peso_total) }
+  ]
+
+  const maxBottom = H - MARGIN - 10
+  const productBottom = prodY + 14 + fieldH
+
+  // Presets para que SIEMPRE quepa todo sin empalmar
+  const presets = [
+    { scaleRowH: 18, gap: 10, formH: 54 },
+    { scaleRowH: 16, gap: 8,  formH: 52 },
+    { scaleRowH: 14, gap: 8,  formH: 50 },
+    { scaleRowH: 14, gap: 6,  formH: 46 }
+  ]
+
+  const feeW = 95
+  const feeX = RIGHT_X + RIGHT_W - feeW
+
+  const minFeeTop = (boxY + 14 + boxH) + 6 // que no suba encima del bloque Weigher
+  let layout = null
+
+  const tryLayout = ({ scaleRowH, gap, formH }) => {
+    const scalesH = scaleRows.length * scaleRowH
+    const blockH = scalesH + gap + formH
+
+    // Arranca “idealmente” abajo de Product, pero si no cabe, lo subimos
+    let scaleY = productBottom + 14
+    if (scaleY + blockH > maxBottom) scaleY = maxBottom - blockH
+
+    // Weigh Fee siempre ARRIBA de scales (y nunca se empalma)
+    let feeTopY = Math.min(prodY, scaleY - (fieldH + 18)) // lo intenta dejar cerca de Product
+    if (feeTopY < minFeeTop) feeTopY = minFeeTop
+
+    const feeBoxY = feeTopY + 14
+    const feeBottom = feeBoxY + fieldH
+
+    // Asegura separación real: scales deben iniciar debajo del fee
+    const minScaleY = feeBottom + 10
+    if (scaleY < minScaleY) scaleY = minScaleY
+
+    // ya con todo, valida que quepa
+    if (scaleY + blockH > maxBottom) return null
+
+    const formY = scaleY + scalesH + gap
+    return { scaleRowH, gap, formH, scalesH, blockH, scaleY, formY, feeTopY, feeBoxY }
+  }
+
+  for (const p of presets) {
+    const res = tryLayout(p)
+    if (res) { layout = res; break }
+  }
+
+  // fallback extremo (no debería pasar)
+  if (!layout) {
+    layout = tryLayout(presets[presets.length - 1]) || {
+      scaleRowH: 14, gap: 6, formH: 46,
+      scalesH: scaleRows.length * 14,
+      blockH: (scaleRows.length * 14) + 6 + 46,
+      scaleY: Math.max(minFeeTop + 60, productBottom),
+      formY: Math.max(minFeeTop + 60, productBottom) + (scaleRows.length * 14) + 6,
+      feeTopY: minFeeTop,
+      feeBoxY: minFeeTop + 14
+    }
+  }
+
+  // ---- WEIGH FEE (siempre arriba de scales) ----
+  doc.font('Helvetica-Bold').fontSize(9).fillColor('#000000')
+  doc.text('Weigh Fee', feeX, layout.feeTopY, { width: feeW, align: 'right' })
+
+  doc.save()
+  doc.lineWidth(1)
+  doc.strokeColor('#000000')
+  doc.rect(feeX, layout.feeBoxY, feeW, fieldH)
+  doc.stroke()
+  doc.restore()
+
+  doc.font('Helvetica').fontSize(8.5)
+  doc.text(t.weigh_fee_text || '$0.00', feeX, layout.feeBoxY + 6, { width: feeW, align: 'center' })
+
+  // ---- SCALES ----
+  const scaleX = RIGHT_X
+  scaleRows.forEach((row, i) => {
+    const rowY = layout.scaleY + i * layout.scaleRowH
+
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#000000')
+    doc.text(row.label, scaleX, rowY + 4, { width: scaleLabelW, align: 'right' })
+
+    doc.save()
+    doc.lineWidth(1)
+    doc.strokeColor('#000000')
+    doc.rect(scaleX + scaleLabelW, rowY, scaleValW, layout.scaleRowH)
+    doc.stroke()
+    doc.restore()
+
+    doc.font('Helvetica').fontSize(8.5)
+    doc.text(String(row.val), scaleX + scaleLabelW + 6, rowY + 4)
+  })
+
+  // ---- REWEIGH FORM (abajo de scales) ----
+  const formX = RIGHT_X
+  const formW = RIGHT_W
+
+  doc.save()
+  doc.lineWidth(1)
+  doc.strokeColor('#000000')
+  doc.rect(formX, layout.formY, formW, layout.formH)
+  doc.stroke()
+  doc.restore()
+
+  doc.font('Helvetica-Bold').fontSize(9).fillColor('#000000')
+  doc.text('Reweigh Form', formX + 10, layout.formY + 8)
+
+  doc.font('Helvetica').fontSize(8.5).fillColor('#000000')
+  doc.text('Date and Time:', formX + 10, layout.formY + 24)
+
+  const initialsY = layout.formY + (layout.formH - 18)
+  doc.text('Initials:', formX + 10, initialsY)
+  doc.text('____________________', formX + 70, initialsY)
+}
+
 
 /**
  * Generar Excel
@@ -480,24 +972,21 @@ export const generateExcel = async (filters = {}) => {
   workbook.created = new Date()
 
   const worksheet = workbook.addWorksheet('Statement', {
-    pageSetup: { paperSize: 9, orientation: 'landscape' } // Cambiado a landscape por más columnas
+    pageSetup: { paperSize: 9, orientation: 'landscape' }
   })
 
-  // ========== HEADER (A..M = 13 columnas) ==========
-  
-  // Fila 1: Company Name
+  // ========== HEADER ==========
+
   worksheet.mergeCells('A1:M1')
   worksheet.getCell('A1').value = settings.companyName
   worksheet.getCell('A1').font = { size: 16, bold: true, color: { argb: '2E75B6' } }
   worksheet.getCell('A1').alignment = { horizontal: 'center' }
 
-  // Fila 2: Customer Statement
   worksheet.mergeCells('A2:M2')
   worksheet.getCell('A2').value = 'Customer Statement'
   worksheet.getCell('A2').font = { size: 12, bold: true }
   worksheet.getCell('A2').alignment = { horizontal: 'center' }
 
-  // Fila 3: Generated + Date Range
   const dateRange = [
     filters.date_from ? `From: ${filters.date_from}` : '',
     filters.date_to ? `To: ${filters.date_to}` : ''
@@ -508,20 +997,19 @@ export const generateExcel = async (filters = {}) => {
   worksheet.getCell('A3').font = { size: 9, italic: true, color: { argb: '666666' } }
   worksheet.getCell('A3').alignment = { horizontal: 'center' }
 
-  // Fila 4: Company Name | Address | Phone (NUEVA)
   worksheet.mergeCells('A4:M4')
   const companyInfoLine = [
     settings.companyName || '',
     settings.companyAddress || '',
-    settings.companyPhone || '' // Ajusta el nombre del campo si es diferente en tu settings
+    settings.companyPhone || ''
   ].filter(Boolean).join(' | ')
   worksheet.getCell('A4').value = companyInfoLine
   worksheet.getCell('A4').font = { size: 9, color: { argb: '333333' } }
   worksheet.getCell('A4').alignment = { horizontal: 'center' }
 
-  worksheet.addRow([]) // Fila 5 vacía
+  worksheet.addRow([])
 
-  // ========== CUSTOMER INFO (ahora empieza en fila 6) ==========
+  // ========== CUSTOMER INFO ==========
   worksheet.mergeCells('A6:M6')
   const custHeader = worksheet.getCell('A6')
   custHeader.value = 'Customer Information'
@@ -558,9 +1046,9 @@ export const generateExcel = async (filters = {}) => {
   worksheet.getCell('A12').value = 'Tax ID:'
   worksheet.getCell('B12').value = customer.tax_id || '-'
 
-  worksheet.addRow([]) // Fila 13 vacía
+  worksheet.addRow([])
 
-  // ========== SUMMARY (ahora empieza en fila 14) ==========
+  // ========== SUMMARY ==========
   worksheet.mergeCells('A14:M14')
   const summHeader = worksheet.getCell('A14')
   summHeader.value = 'Statement Summary'
@@ -601,29 +1089,26 @@ export const generateExcel = async (filters = {}) => {
   worksheet.getCell('J17').numFmt = '"$"#,##0.00'
   worksheet.getCell('J17').font = { color: { argb: 'DC3545' } }
 
-  worksheet.addRow([]) // Fila 18 vacía
+  worksheet.addRow([])
 
-  // ========== TABLA DE TRANSACCIONES (empieza en fila 19) ==========
+  // ========== TABLA DE TRANSACCIONES ==========
   const tableStartRow = 19
 
-  // Anchos de columna (13 columnas: A..M)
-  // Orden: Ticket #, Service, Date, Driver, Trailer #, Tractor #, Scale Op, Weight, Total, Paid, Status
   const colWidths = [14, 10, 18, 20, 12, 12, 18, 12, 12, 12, 12]
   colWidths.forEach((w, i) => worksheet.getColumn(i + 1).width = w)
 
-  // Headers de la tabla (nuevo orden con nuevas columnas)
   const headers = [
-    'Ticket #',      // A
-    'Service',       // B
-    'Date',          // C
-    'Driver',        // D (NUEVO)
-    'Trailer #',     // E (NUEVO)
-    'Tractor #',     // F (NUEVO)
-    'Scale Op',      // G (NUEVO)
-    'Weight',        // H
-    'Total',         // I
-    'Paid',          // J
-    'Status'         // K
+    'Ticket #',
+    'Service',
+    'Date',
+    'Driver',
+    'Trailer #',
+    'Tractor #',
+    'Scale Op',
+    'Weight',
+    'Total',
+    'Paid',
+    'Status'
   ]
 
   headers.forEach((h, i) => {
@@ -640,7 +1125,6 @@ export const generateExcel = async (filters = {}) => {
     }
   })
 
-  // Data rows
   let currentRow = tableStartRow + 1
   transactions.forEach((row, index) => {
     const statusLabel = row.sale_status_code === 'CANCELLED' ? 'Cancelled' :
@@ -651,36 +1135,32 @@ export const generateExcel = async (filters = {}) => {
       row.payment_status_code === 'RECEIVED' ? '28A745' :
         row.payment_status_code === 'PENDING' ? 'FFC107' : '666666'
 
-    // Construir nombre del driver
     const driverName = [row.driver_first_name, row.driver_last_name]
       .filter(Boolean)
       .join(' ') || '-'
 
-    // Nuevo orden de datos
     const rowData = [
-      row.ticket_number || '-',                    // A: Ticket #
-      row.product_type || '-',                     // B: Service
-      formatDate(row.sale_date),                   // C: Date
-      driverName,                                  // D: Driver (NUEVO)
-      row.trailer_number || '-',                   // E: Trailer # (NUEVO)
-      row.tractor_number || '-',                   // F: Tractor # (NUEVO)
-      row.operator_name || '-',                    // G: Scale Op (NUEVO)
-      parseFloat(row.gross_weight) || 0,           // H: Weight
-      parseFloat(row.total_amount) || 0,           // I: Total
-      parseFloat(row.amount_paid) || 0,            // J: Paid
-      statusLabel                                  // K: Status
+      row.ticket_number || '-',
+      row.product_type || '-',
+      formatDate(row.sale_date),
+      driverName,
+      row.trailer_number || '-',
+      row.tractor_number || '-',
+      row.operator_name || '-',
+      parseFloat(row.gross_weight) || 0,
+      parseFloat(row.total_amount) || 0,
+      parseFloat(row.amount_paid) || 0,
+      statusLabel
     ]
 
     rowData.forEach((value, colIndex) => {
       const cell = worksheet.getCell(currentRow, colIndex + 1)
       cell.value = value
 
-      // Fondo alternado
       if (index % 2 === 0) {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F2F2F2' } }
       }
 
-      // Bordes
       cell.border = {
         top: { style: 'thin', color: { argb: 'CCCCCC' } },
         left: { style: 'thin', color: { argb: 'CCCCCC' } },
@@ -688,25 +1168,21 @@ export const generateExcel = async (filters = {}) => {
         right: { style: 'thin', color: { argb: 'CCCCCC' } }
       }
 
-      // Formato currency para Total y Paid (columnas I=8 y J=9)
       if (colIndex === 8 || colIndex === 9) {
         cell.numFmt = '"$"#,##0.00'
         cell.alignment = { horizontal: 'right' }
       }
 
-      // Formato número para Weight (columna H=7)
       if (colIndex === 7) {
         cell.numFmt = '#,##0.00'
         cell.alignment = { horizontal: 'right' }
       }
 
-      // Color para Service (columna B=1)
       if (colIndex === 1) {
         const typeColor = value === 'Weigh' ? '17A2B8' : '6F42C1'
         cell.font = { bold: true, color: { argb: typeColor } }
       }
 
-      // Color para Status (columna K=10)
       if (colIndex === 10) {
         cell.font = { bold: true, color: { argb: statusColor } }
         cell.alignment = { horizontal: 'center' }

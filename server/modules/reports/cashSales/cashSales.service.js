@@ -131,7 +131,7 @@ export const getData = async (filters = {}) => {
     params.push(sale_status)
   }
 
-  sql += ` ORDER BY s.created_at DESC, t.ticket_id DESC`
+  sql += ` ORDER BY s.created_at ASC, t.ticket_id ASC`
 
   const transactions = await query(sql, params)
 

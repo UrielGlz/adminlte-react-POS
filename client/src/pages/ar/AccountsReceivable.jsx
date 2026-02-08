@@ -82,31 +82,31 @@ function AccountsReceivable() {
     const customerId = e.target.value
     setSelectedCustomerId(customerId)
     fetchCustomerData(customerId)
-    setPaymentForm(prev => ({ 
-      ...prev, 
-      amount_received: '', 
+    setPaymentForm(prev => ({
+      ...prev,
+      amount_received: '',
       reference_number: '',
-      is_credit_balance: false 
+      is_credit_balance: false
     }))
   }
 
   // Handle payment form changes
   const handleFormChange = (e) => {
     const { name, value, type, checked } = e.target
-    
+
     // Si se marca/desmarca credit balance, resetear otros campos
     if (name === 'is_credit_balance') {
-      setPaymentForm(prev => ({ 
-        ...prev, 
+      setPaymentForm(prev => ({
+        ...prev,
         [name]: checked,
         apply_method: 'FIFO',  // Reset apply method cuando cambia
         amount_received: ''
       }))
       setManualAllocations({})
     } else {
-      setPaymentForm(prev => ({ 
-        ...prev, 
-        [name]: type === 'checkbox' ? checked : value 
+      setPaymentForm(prev => ({
+        ...prev,
+        [name]: type === 'checkbox' ? checked : value
       }))
     }
   }
@@ -227,9 +227,9 @@ function AccountsReceivable() {
            <p class="text-success">Amount available for future purchases</p>`
         : `<p><strong>Amount Applied:</strong> $${response.data.data.amount_applied.toFixed(2)}</p>
            <p><strong>Transactions:</strong> ${response.data.data.allocations_count}</p>
-           ${response.data.data.amount_unapplied > 0 
-             ? `<p class="text-warning"><strong>Unapplied:</strong> $${response.data.data.amount_unapplied.toFixed(2)}</p>` 
-             : ''}`
+           ${response.data.data.amount_unapplied > 0
+          ? `<p class="text-warning"><strong>Unapplied:</strong> $${response.data.data.amount_unapplied.toFixed(2)}</p>`
+          : ''}`
 
       await Swal.fire({
         title: 'Payment Applied',
@@ -280,6 +280,7 @@ function AccountsReceivable() {
 
   // Determinar si mostrar pending transactions
   const showPendingTransactions = !paymentForm.is_credit_balance && pendingData.transactions.length > 0
+  const isPrepaid = customerSummary?.credit_type === 'PREPAID'
 
   return (
     <div className="container-fluid">
@@ -351,7 +352,7 @@ function AccountsReceivable() {
                 <div className="card-body">
                   <h5 className="card-title">{customerSummary.account_name}</h5>
                   <p className="text-muted mb-2">{customerSummary.account_number}</p>
-                  
+
                   {/* MEJORA 1: Mostrar advertencia pero permitir pagos */}
                   {customerSummary.is_suspended && (
                     <div className="alert alert-warning py-2">
@@ -374,11 +375,11 @@ function AccountsReceivable() {
                       </tr>
                       <tr>
                         <td className="text-muted">Credit Limit:</td>
-                        <td>{formatCurrency(customerSummary.credit_limit)}</td>
+                        <td>{isPrepaid ? '-' : formatCurrency(customerSummary.credit_limit)}</td>
                       </tr>
                       <tr>
                         <td className="text-muted">Payment Terms:</td>
-                        <td>{customerSummary.payment_terms_days} days</td>
+                        <td>{isPrepaid ? '-' : `${customerSummary.payment_terms_days ?? 0} days`}</td>
                       </tr>
                       <tr>
                         <td className="text-muted">Contact:</td>
@@ -560,7 +561,7 @@ function AccountsReceivable() {
                           <div className="alert alert-info mt-2 py-2">
                             <small>
                               <i className="bi bi-info-circle me-1"></i>
-                              This payment will NOT be applied to any tickets. 
+                              This payment will NOT be applied to any tickets.
                               It will be available as credit for future purchases.
                             </small>
                           </div>
@@ -679,7 +680,7 @@ function AccountsReceivable() {
                           </label>
                         </div>
                         <small className="text-muted">
-                          {paymentForm.apply_method === 'FIFO' 
+                          {paymentForm.apply_method === 'FIFO'
                             ? 'Applies from oldest to newest automatically'
                             : 'Select transactions manually below'}
                         </small>

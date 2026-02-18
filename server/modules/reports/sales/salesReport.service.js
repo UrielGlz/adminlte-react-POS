@@ -26,9 +26,9 @@ const getLogoPath = (logoFilename) => {
  * Obtener datos del reporte
  */
 export const getData = async (filters = {}) => {
-  const { 
-    date_from = null, 
-    date_to = null, 
+  const {
+    date_from = null,
+    date_to = null,
     product_id = 'all',
     customer_id = 'all',
     operator_id = 'all',
@@ -37,7 +37,7 @@ export const getData = async (filters = {}) => {
   } = filters
 
   const params = []
-  
+
   //Query corregida con DISTINCT para evitar duplicados
   let sql = `
     SELECT DISTINCT
@@ -108,9 +108,9 @@ export const getData = async (filters = {}) => {
   if (status_id && status_id !== 'all') {
     sql += ` AND s.sale_status_id = ?`
     params.push(status_id)
-  }else{//SIEMPRE PINTAR SOLO LAS VENTAS COMPLETADAS, PARA LAS CANCELADAS ES NECESARIO FILTRAR POR ELLAS
+  } else {//SIEMPRE PINTAR SOLO LAS VENTAS COMPLETADAS, PARA LAS CANCELADAS ES NECESARIO FILTRAR POR ELLAS
     sql += ` AND s.sale_status_id = 2`
- 
+
   }
 
   sql += ` ORDER BY s.created_at ASC, s.sale_id ASC`
@@ -171,18 +171,24 @@ export const generatePdf = async (filters = {}) => {
 
   const formatDate = (date) => {
     if (!date) return '-'
-    return new Date(date).toLocaleDateString('en-US', { 
-      year: 'numeric', month: 'short', day: 'numeric', 
-      hour: '2-digit', minute: '2-digit' 
-    })
+
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC',        // respeta la hora del ...Z
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }).format(new Date(date))
   }
+
 
   const logoPath = getLogoPath(settings.companyLogo)
 
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ 
-        size: 'LETTER', 
+      const doc = new PDFDocument({
+        size: 'LETTER',
         layout: 'landscape',
         margins: { top: 40, bottom: 40, left: 30, right: 30 }
       })
@@ -243,14 +249,14 @@ export const generatePdf = async (filters = {}) => {
         }
 
         doc.fontSize(13).fillColor(primaryColor).font('Helvetica-Bold')
-           .text(settings.companyName, marginLeft + colWidth, headerTop + 3, { width: colWidth, align: 'center' })
-        
+          .text(settings.companyName, marginLeft + colWidth, headerTop + 3, { width: colWidth, align: 'center' })
+
         doc.fontSize(10).fillColor('#333333').font('Helvetica-Bold')
-           .text('Sales Report', marginLeft + colWidth, headerTop + 22, { width: colWidth, align: 'center' })
+          .text('Sales Report', marginLeft + colWidth, headerTop + 22, { width: colWidth, align: 'center' })
 
         doc.fontSize(7).fillColor(textGray).font('Helvetica')
-           .text(`Generated: ${new Date().toLocaleString('en-US')}`, marginLeft + colWidth * 2, headerTop + 8, { width: colWidth - marginRight, align: 'right' })
-           .text(`Filters: ${filterText}`, marginLeft + colWidth * 2, headerTop + 18, { width: colWidth - marginRight, align: 'right' })
+          .text(`Generated: ${new Date().toLocaleString('en-US')}`, marginLeft + colWidth * 2, headerTop + 8, { width: colWidth - marginRight, align: 'right' })
+          .text(`Filters: ${filterText}`, marginLeft + colWidth * 2, headerTop + 18, { width: colWidth - marginRight, align: 'right' })
 
         doc.moveTo(marginLeft, 70).lineTo(pageWidth - marginRight, 70).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
       }
@@ -334,13 +340,13 @@ export const generatePdf = async (filters = {}) => {
 
       // Borde tabla
       doc.rect(tableLeft, headerAreaHeight, tableWidth, yPos - headerAreaHeight)
-         .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
+        .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
 
       // ========== SUMMARY ==========
       yPos += 8
       doc.rect(tableLeft, yPos, 420, 16).fill('#E7E6E6')
       doc.fontSize(8).fillColor('#000000').font('Helvetica-Bold')
-         .text('Summary', tableLeft, yPos + 4, { width: 420, align: 'center' })
+        .text('Summary', tableLeft, yPos + 4, { width: 420, align: 'center' })
 
       yPos += 20
       doc.fontSize(7).font('Helvetica').fillColor('#000000')
@@ -411,7 +417,7 @@ export const generateExcel = async (filters = {}) => {
   // Table header
   const headerRow = 5
   const headers = ['Ticket #', 'Type', 'Date', 'Customer', 'Operator', 'Payment', 'Weight', 'Subtotal', 'Tax', 'Total']
-  
+
   headers.forEach((h, i) => {
     const cell = worksheet.getCell(headerRow, i + 1)
     cell.value = h

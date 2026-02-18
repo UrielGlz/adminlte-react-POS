@@ -7,7 +7,7 @@ function SaleDriverInfo() {
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState(null)
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 })
-  
+
   // Filtros
   const [search, setSearch] = useState('')
   const [filterAccount, setFilterAccount] = useState('')
@@ -20,7 +20,7 @@ function SaleDriverInfo() {
   const [selectedItem, setSelectedItem] = useState(null)
   const [showModal, setShowModal] = useState(false)
 
-  useEffect(() => { 
+  useEffect(() => {
     fetchStats()
   }, [])
 
@@ -76,21 +76,18 @@ function SaleDriverInfo() {
   }
 
   const formatDate = (date) => {
-  if (!date) return '-'
+    if (!date) return '-'
 
-  const d = new Date(date)
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC',        // respeta la hora del ...Z
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }).format(new Date(date))
+  }
 
-  const parts = new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  }).formatToParts(d)
-
-  const get = (t) => parts.find(p => p.type === t)?.value ?? ''
-  return `${get('month')} ${get('day')}, ${get('hour')}:${get('minute')} ${get('dayPeriod')}`
-}
 
   const clearFilters = () => {
     setSearch('')
@@ -202,7 +199,7 @@ function SaleDriverInfo() {
                 <select
                   className="form-select"
                   value={filterAccount}
-                  onChange={(e) => { setFilterAccount(e.target.value); setPagination(p => ({...p, page: 1})) }}
+                  onChange={(e) => { setFilterAccount(e.target.value); setPagination(p => ({ ...p, page: 1 })) }}
                 >
                   <option value="">All Accounts</option>
                   {stats?.accounts?.map(a => (
@@ -219,7 +216,7 @@ function SaleDriverInfo() {
                 <select
                   className="form-select"
                   value={filterLicenseState}
-                  onChange={(e) => { setFilterLicenseState(e.target.value); setPagination(p => ({...p, page: 1})) }}
+                  onChange={(e) => { setFilterLicenseState(e.target.value); setPagination(p => ({ ...p, page: 1 })) }}
                 >
                   <option value="">All States</option>
                   {stats?.licenseStates?.map(s => (
@@ -234,7 +231,7 @@ function SaleDriverInfo() {
                 <select
                   className="form-select"
                   value={filterProduct}
-                  onChange={(e) => { setFilterProduct(e.target.value); setPagination(p => ({...p, page: 1})) }}
+                  onChange={(e) => { setFilterProduct(e.target.value); setPagination(p => ({ ...p, page: 1 })) }}
                 >
                   <option value="">All Products</option>
                   {stats?.products?.map(p => (
@@ -250,7 +247,7 @@ function SaleDriverInfo() {
                   type="date"
                   className="form-control"
                   value={dateFrom}
-                  onChange={(e) => { setDateFrom(e.target.value); setPagination(p => ({...p, page: 1})) }}
+                  onChange={(e) => { setDateFrom(e.target.value); setPagination(p => ({ ...p, page: 1 })) }}
                 />
               </div>
 
@@ -261,7 +258,7 @@ function SaleDriverInfo() {
                   type="date"
                   className="form-control"
                   value={dateTo}
-                  onChange={(e) => { setDateTo(e.target.value); setPagination(p => ({...p, page: 1})) }}
+                  onChange={(e) => { setDateTo(e.target.value); setPagination(p => ({ ...p, page: 1 })) }}
                 />
               </div>
 
@@ -395,7 +392,7 @@ function SaleDriverInfo() {
             <nav>
               <ul className="pagination pagination-sm mb-0">
                 <li className={`page-item ${pagination.page === 1 ? 'disabled' : ''}`}>
-                  <button className="page-link" onClick={() => setPagination(p => ({...p, page: p.page - 1}))}>
+                  <button className="page-link" onClick={() => setPagination(p => ({ ...p, page: p.page - 1 }))}>
                     <i className="bi bi-chevron-left"></i>
                   </button>
                 </li>
@@ -403,7 +400,7 @@ function SaleDriverInfo() {
                   const pageNum = i + 1
                   return (
                     <li key={pageNum} className={`page-item ${pagination.page === pageNum ? 'active' : ''}`}>
-                      <button className="page-link" onClick={() => setPagination(p => ({...p, page: pageNum}))}>
+                      <button className="page-link" onClick={() => setPagination(p => ({ ...p, page: pageNum }))}>
                         {pageNum}
                       </button>
                     </li>
@@ -411,7 +408,7 @@ function SaleDriverInfo() {
                 })}
                 {pagination.totalPages > 5 && <li className="page-item disabled"><span className="page-link">...</span></li>}
                 <li className={`page-item ${pagination.page === pagination.totalPages ? 'disabled' : ''}`}>
-                  <button className="page-link" onClick={() => setPagination(p => ({...p, page: p.page + 1}))}>
+                  <button className="page-link" onClick={() => setPagination(p => ({ ...p, page: p.page + 1 }))}>
                     <i className="bi bi-chevron-right"></i>
                   </button>
                 </li>

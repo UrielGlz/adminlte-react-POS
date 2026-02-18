@@ -123,16 +123,22 @@ function SalesReport() {
   //TODO: importante mantener este formato
   const formatDate = (date) => {
     if (!date) return '-'
-    return new Date(date).toLocaleString('en-US', {
-      timeZone: 'America/Matamoros', // Reynosa (frontera)
-      // si prefieres Texas: 'America/Chicago'
+
+    const d = new Date(date)
+
+    const parts = new Intl.DateTimeFormat('en-US', {
       month: 'short',
-      day: 'numeric',
+      day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
       hour12: true,
-    })
+    }).formatToParts(d)
+
+    const get = (t) => parts.find(p => p.type === t)?.value ?? ''
+    return `${get('month')} ${get('day')}, ${get('hour')}:${get('minute')} ${get('dayPeriod')}`
   }
+
+
   const totalRows = data.length
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))
   const safePage = Math.min(Math.max(page, 1), totalPages)

@@ -191,18 +191,22 @@ function UsersComplete() {
   //   if (!dateString) return '-'
   //   return new Date(dateString).toLocaleDateString('es-MX')
   // }
-  const formatDate = (dateString) => {
-    if (!dateString) return '-'
-    return new Date(dateString).toLocaleString('en-US', {
-      timeZone: 'America/Matamoros', // Reynosa (frontera)
-      // si prefieres Texas: 'America/Chicago'
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    })
-  }
+  const formatDate = (date) => {
+  if (!date) return '-'
+
+  const d = new Date(date)
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).formatToParts(d)
+
+  const get = (t) => parts.find(p => p.type === t)?.value ?? ''
+  return `${get('month')} ${get('day')}, ${get('hour')}:${get('minute')} ${get('dayPeriod')}`
+}
 
   return (
     <>

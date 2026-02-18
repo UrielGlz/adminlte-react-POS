@@ -175,16 +175,21 @@ function CustomerForm() {
   }
 
   const formatDate = (date) => {
-    if (!date) return '-'
-    return new Date(date).toLocaleString('en-US', {
-      timeZone: 'America/Matamoros',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    })
-  }
+  if (!date) return '-'
+
+  const d = new Date(date)
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).formatToParts(d)
+
+  const get = (t) => parts.find(p => p.type === t)?.value ?? ''
+  return `${get('month')} ${get('day')}, ${get('hour')}:${get('minute')} ${get('dayPeriod')}`
+}
 
   if (loading) return <div className="container-fluid p-4 text-center"><div className="spinner-border text-primary"></div></div>
   const isPrepaid = formData.has_credit && formData.credit.credit_type === 'PREPAID'

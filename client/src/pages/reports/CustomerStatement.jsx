@@ -342,7 +342,7 @@ function CustomerStatement() {
                           <strong>{customer.payment_terms_days || 30} days</strong>
                         </div>
                       </div>
-                      {customer.is_suspended && (
+                      {customer.is_suspended === 1 && (
                         <div className="alert alert-danger mt-3 mb-0 py-2">
                           <i className="bi bi-exclamation-triangle me-2"></i>
                           Account Suspended

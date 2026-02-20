@@ -352,6 +352,7 @@ export const generatePdf = async (filters = {}) => {
           .filter(Boolean)
           .join(' - ') || 'All time'
 
+
       const drawMainHeader = () => {
         const headerTop = 20
 
@@ -375,15 +376,44 @@ export const generatePdf = async (filters = {}) => {
           .font('Helvetica-Bold')
           .text('Customer Statement', marginLeft + 70, headerTop + 22, { width: contentWidth - 140, align: 'center' })
 
-        doc
-          .fontSize(8)
-          .fillColor(textGray)
-          .font('Helvetica')
-          .text(`Generated: ${new Date().toLocaleString('en-US')}`, pageWidth - marginRight - 120, headerTop + 8, {
-            width: 120,
-            align: 'right'
+        const metaW = 150
+        const metaX = pageWidth - marginRight - metaW
+
+        const generatedTxt = new Intl.DateTimeFormat('en-US', {
+          year: 'numeric',
+          month: 'numeric',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        }).format(new Date())
+
+        doc.fontSize(7).fillColor(textGray).font('Helvetica')
+
+        // línea 1
+        doc.text(`Generated: ${generatedTxt}`, metaX, headerTop + 6, {
+          width: metaW,
+          align: 'right',
+          lineBreak: false
+        })
+
+        // línea 2 y 3 (sin encimar)
+        if (filters.date_from) {
+          doc.text(`From: ${filters.date_from}`, metaX, headerTop + 16, {
+            width: metaW,
+            align: 'right',
+            lineBreak: false
           })
-          .text(dateRange, pageWidth - marginRight - 120, headerTop + 20, { width: 120, align: 'right' })
+        }
+        if (filters.date_to) {
+          doc.text(`${filters.date_to}`, metaX, headerTop + 26, {
+            width: metaW,
+            align: 'right',
+            lineBreak: false
+          })
+        }
+
+
 
         doc.moveTo(marginLeft, 65).lineTo(pageWidth - marginRight, 65).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
 
@@ -424,27 +454,58 @@ export const generatePdf = async (filters = {}) => {
         doc.fontSize(10).fillColor('#333333').font('Helvetica-Bold').text('Statement Summary', marginLeft + 5, yPos + 4)
 
         yPos += 22
-        doc.fontSize(8).font('Helvetica')
 
-        doc.text(`Total Transactions: ${totals.total_transactions}`, marginLeft, yPos)
-        doc.text(`Weigh: ${totals.total_weigh}`, marginLeft + 100, yPos)
-        doc.text(`Reweigh: ${totals.total_reweigh}`, marginLeft + 160, yPos)
-        doc.text(`Total Weight: ${formatNumber(totals.total_weight)} lb`, marginLeft + 240, yPos)
+        // === Summary box con padding (sin encimar / sin línea atravesando) ===
+        const padTop = 8
+        const padBot = 6
+        const lineH = 14
+        const sumBoxY = yPos + 2
+        const sumBoxH = padTop + padBot + (lineH * 3)
 
-        yPos += 12
-        doc.fillColor(successColor).text(`Paid: ${totals.count_paid}`, marginLeft, yPos)
-        doc.fillColor(warningColor).text(`Pending: ${totals.count_pending}`, marginLeft + 60, yPos)
-        doc.fillColor(dangerColor).text(`Cancelled: ${totals.count_cancelled}`, marginLeft + 130, yPos)
+        // fondo + borde
+        doc.save()
+        doc.fillColor('#FFFFFF')
+        doc.rect(marginLeft, sumBoxY, contentWidth, sumBoxH).fill()
+        doc.strokeColor('#D0D0D0').lineWidth(0.6)
+        doc.rect(marginLeft, sumBoxY, contentWidth, sumBoxH).stroke()
+        doc.restore()
 
-        yPos += 12
+        let sy = sumBoxY + padTop
+
+        // Row 1
+        doc.fontSize(8).fillColor('#333333').font('Helvetica')
+        doc.text(`Total Transactions: ${totals.total_transactions}`, marginLeft + 6, sy)
+        doc.text(`Weigh: ${totals.total_weigh}`, marginLeft + 140, sy)
+        doc.text(`Reweigh: ${totals.total_reweigh}`, marginLeft + 220, sy)
+
+        // Total Weight a la derecha (en su cajita para que no choque)
+        doc.text(`Total Weight: ${formatNumber(totals.total_weight)} lb`,
+          marginLeft + contentWidth - 210, sy, { width: 204, align: 'right' })
+
+        sy += lineH
+
+        // Row 2
+        doc.fontSize(8).font('Helvetica-Bold')
+        doc.fillColor(successColor).text(`Paid: ${totals.count_paid}`, marginLeft + 6, sy)
+        doc.fillColor(warningColor).text(`Pending: ${totals.count_pending}`, marginLeft + 90, sy)
+        doc.fillColor(dangerColor).text(`Cancelled: ${totals.count_cancelled}`, marginLeft + 190, sy)
+
+        sy += lineH
+
+        // Row 3
         doc.fillColor('#333333').font('Helvetica-Bold')
-        doc.text(`Subtotal: ${formatCurrency(totals.total_subtotal)}`, marginLeft, yPos)
-        doc.text(`Tax: ${formatCurrency(totals.total_tax)}`, marginLeft + 110, yPos)
-        doc.text(`Total: ${formatCurrency(totals.total_amount)}`, marginLeft + 200, yPos)
-        doc.fillColor(successColor).text(`Paid: ${formatCurrency(totals.total_paid)}`, marginLeft + 310, yPos)
-        doc.fillColor(dangerColor).text(`Pending: ${formatCurrency(totals.total_pending)}`, marginLeft + 410, yPos)
+        doc.text(`Subtotal: ${formatCurrency(totals.total_subtotal)}`, marginLeft + 6, sy)
+        doc.text(`Tax: ${formatCurrency(totals.total_tax)}`, marginLeft + 160, sy)
+        doc.text(`Total: ${formatCurrency(totals.total_amount)}`, marginLeft + 290, sy)
 
-        return yPos + 25
+        doc.fillColor(successColor).text(`Paid: ${formatCurrency(totals.total_paid)}`, marginLeft + 390, sy)
+        doc.fillColor(dangerColor).text(`Pending: ${formatCurrency(totals.total_pending)}`, marginLeft + 480, sy)
+
+        // bajar yPos para que la tabla empiece bien
+        yPos = sumBoxY + sumBoxH + 10
+        return yPos
+
+
       }
 
       const drawSimpleHeader = () => {
@@ -481,18 +542,44 @@ export const generatePdf = async (filters = {}) => {
       }
 
       const tableLeft = marginLeft
-      const colWidths = [60, 45, 70, 45, 50, 50, 50, 55, 55]
+      
+      const colWidths = [35, 35, 70, 75, 35, 35, 55, 55, 50, 50, 37]
+
+
       const tableWidth = colWidths.reduce((a, b) => a + b, 0)
-      const headers = ['Ticket #', 'Type', 'Date', 'Weight', 'Subtotal', 'Tax', 'Total', 'Paid', 'Status']
+
+    
+      const headers = [
+        'Ticket #',
+        'Service',
+        'Date',
+        'Driver',
+        'Trailer #',
+        'Tractor #',
+        'Scale Op',
+        'Weight',
+        'Total',
+        'Paid',
+        'Status'
+      ]
+
+      doc.fontSize(6).fillColor('#FFFFFF').font('Helvetica-Bold')
 
       const drawTableHeader = (y) => {
         doc.rect(tableLeft, y, tableWidth, tableHeaderHeight).fill(headerBg)
         doc.fontSize(7).fillColor('#FFFFFF').font('Helvetica-Bold')
         let xPos = tableLeft + 2
         headers.forEach((header, i) => {
-          const align = i >= 3 ? 'right' : 'left'
+
+          //const align = i >= 3 ? 'right' : 'left'
+          const align =
+            (i === 7 || i === 8 || i === 9) ? 'right' :   // Weight, Total, Paid
+              (i === 10) ? 'center' :                        // Status
+                'left'
+
           doc.text(header, xPos, y + 5, { width: colWidths[i] - 4, align })
           xPos += colWidths[i]
+
         })
         return y + tableHeaderHeight
       }
@@ -512,22 +599,26 @@ export const generatePdf = async (filters = {}) => {
       }
 
       let yPos = drawMainHeader()
+      let tableTopY = yPos
       yPos = drawTableHeader(yPos)
 
       while (rowIndex < transactions.length) {
         const row = transactions[rowIndex]
 
         if (yPos + rowHeight > pageHeight - footerHeight) {
+
+          // cierre borde tabla en esta página
+          doc.rect(tableLeft, tableTopY, tableWidth, yPos - tableTopY)
+            .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
+
           drawFooter()
 
-          doc.addPage({
-            size: 'LETTER',
-            layout: 'portrait',
-            margins: { top: 40, bottom: 40, left: 40, right: 40 }
-          })
+          doc.addPage({ size: 'LETTER', layout: 'portrait', margins: { top: 40, bottom: 40, left: 40, right: 40 } })
 
           currentPage++
           yPos = drawSimpleHeader()
+
+          tableTopY = yPos         // <-- nuevo inicio tabla
           yPos = drawTableHeader(yPos)
         }
 
@@ -538,22 +629,41 @@ export const generatePdf = async (filters = {}) => {
         const statusColor = getStatusColor(row.payment_status_code, row.sale_status_code)
         const statusLabel = getStatusLabel(row.payment_status_code, row.sale_status_code)
 
+    
+        const driverName = [row.driver_first_name, row.driver_last_name]
+          .filter(Boolean)
+          .join(' ') || '-'
+
         const rowData = [
           row.ticket_number || '-',
-          row.product_type || '-',
-          formatDateTime(row.sale_date),
-          formatNumber(row.gross_weight),
-          formatCurrency(row.subtotal),
-          formatCurrency(row.tax_amount),
-          formatCurrency(row.total_amount),
-          formatCurrency(row.amount_paid),
-          statusLabel
+          row.product_type || '-',              // Service
+          formatDateTime(row.sale_date),        // Date
+          driverName,                           // Driver
+          row.trailer_number || '-',            // Trailer #
+          row.tractor_number || '-',            // Tractor #
+          row.operator_name || '-',             // Scale Op
+          formatNumber(row.gross_weight),       // Weight
+          formatCurrency(row.total_amount),     // Total
+          formatCurrency(row.amount_paid),      // Paid
+          statusLabel                           // Status
         ]
 
         doc.fontSize(6).font('Helvetica')
+
+
         let xPos = tableLeft + 2
         rowData.forEach((cell, i) => {
-          if (i === 8) {
+          // if (i === 8) {
+          //   doc.fillColor(statusColor).font('Helvetica-Bold')
+          // } else if (i === 1) {
+          //   const typeColor = cell === 'Weigh' ? '#17a2b8' : '#6f42c1'
+          //   doc.fillColor(typeColor).font('Helvetica-Bold')
+          // } else {
+          //   doc.fillColor('#333333').font('Helvetica')
+          // }
+          // const align = i >= 3 ? 'right' : 'left'
+
+          if (i === 10) {
             doc.fillColor(statusColor).font('Helvetica-Bold')
           } else if (i === 1) {
             const typeColor = cell === 'Weigh' ? '#17a2b8' : '#6f42c1'
@@ -561,7 +671,12 @@ export const generatePdf = async (filters = {}) => {
           } else {
             doc.fillColor('#333333').font('Helvetica')
           }
-          const align = i >= 3 ? 'right' : 'left'
+
+          const align =
+            (i === 7 || i === 8 || i === 9) ? 'right' :
+              (i === 10) ? 'center' :
+                'left'
+
           doc.text(String(cell), xPos, yPos + 4, { width: colWidths[i] - 4, align })
           xPos += colWidths[i]
         })
@@ -569,9 +684,6 @@ export const generatePdf = async (filters = {}) => {
         yPos += rowHeight
         rowIndex++
       }
-
-      const tableStartY = currentPage === 1 ? headerAreaHeight : 65
-      doc.rect(tableLeft, tableStartY, tableWidth, yPos - tableStartY).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
 
       drawFooter()
 
@@ -612,7 +724,7 @@ export function drawTicketPage(doc, t, logoPath) {
  * Dibuja el ticket en un canvas de 612x396 (mitad de LETTER horizontal)
  * MEJORADO: diseño más fiel al ticket original del POS
  */
-export  function drawTicket612x396(doc, t, logoPath) {
+export function drawTicket612x396(doc, t, logoPath) {
   const W = TICKET_W
   const H = TICKET_H
   const MARGIN = 20
@@ -843,9 +955,9 @@ export  function drawTicket612x396(doc, t, logoPath) {
   // Presets para que SIEMPRE quepa todo sin empalmar
   const presets = [
     { scaleRowH: 18, gap: 10, formH: 54 },
-    { scaleRowH: 16, gap: 8,  formH: 52 },
-    { scaleRowH: 14, gap: 8,  formH: 50 },
-    { scaleRowH: 14, gap: 6,  formH: 46 }
+    { scaleRowH: 16, gap: 8, formH: 52 },
+    { scaleRowH: 14, gap: 8, formH: 50 },
+    { scaleRowH: 14, gap: 6, formH: 46 }
   ]
 
   const feeW = 95

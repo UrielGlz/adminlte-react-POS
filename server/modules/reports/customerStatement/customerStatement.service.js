@@ -239,7 +239,32 @@ export const getFilterOptions = async () => {
 
   return { customers }
 }
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
 
+const normalizePngBuffer = (v) => {
+  if (!v) return null
+  if (Buffer.isBuffer(v)) return v
+
+  if (typeof v === 'string') {
+    // caso: data URL base64
+    if (v.startsWith('data:image/png;base64,')) {
+      const b = Buffer.from(v.split(',')[1], 'base64')
+      return b.slice(0, 8).equals(PNG_MAGIC) ? b : null
+    }
+
+    // caso: a veces tu query wrapper regresa el BLOB como string "latin1" (se ve como "‰PNG...")
+    const latin = Buffer.from(v, 'latin1')
+    if (latin.slice(0, 8).equals(PNG_MAGIC)) return latin
+
+    // intento base64 (por si viene así)
+    try {
+      const b64 = Buffer.from(v, 'base64')
+      if (b64.slice(0, 8).equals(PNG_MAGIC)) return b64
+    } catch { }
+  }
+
+  return null
+}
 /**
  * Generar PDF
  */
@@ -271,7 +296,25 @@ export const generatePdf = async (filters = {}) => {
       minute: '2-digit'
     })
   }
+  let sigMap = new Map()
 
+  if (includeTickets) {
+    const ticketUids = [...new Set(transactions.map(t => t.ticket_uid).filter(Boolean))]
+
+    if (ticketUids.length > 0) {
+      const placeholders = ticketUids.map(() => '?').join(',')
+      const sigRows = await query(
+        `SELECT ticket_uid, signature_img
+       FROM ticket_signatures
+       WHERE ticket_uid IN (${placeholders})`,
+        ticketUids
+      )
+
+      for (const r of sigRows) {
+        sigMap.set(r.ticket_uid, normalizePngBuffer(r.signature_img))
+      }
+    }
+  }
   const logoPath = getLogoPath(settings.companyLogo)
 
   // Pre-generar QRs
@@ -294,6 +337,7 @@ export const generatePdf = async (filters = {}) => {
         return {
           ...t,
           qrPng,
+          signaturePng: sigMap.get(t.ticket_uid) || null,
           weigh_fee_text: formatCurrency(t.weigh_fee ?? t.total_amount ?? 0)
         }
       })
@@ -542,13 +586,13 @@ export const generatePdf = async (filters = {}) => {
       }
 
       const tableLeft = marginLeft
-      
+
       const colWidths = [35, 35, 70, 75, 35, 35, 55, 55, 50, 50, 37]
 
 
       const tableWidth = colWidths.reduce((a, b) => a + b, 0)
 
-    
+
       const headers = [
         'Ticket #',
         'Service',
@@ -629,7 +673,7 @@ export const generatePdf = async (filters = {}) => {
         const statusColor = getStatusColor(row.payment_status_code, row.sale_status_code)
         const statusLabel = getStatusLabel(row.payment_status_code, row.sale_status_code)
 
-    
+
         const driverName = [row.driver_first_name, row.driver_last_name]
           .filter(Boolean)
           .join(' ') || '-'
@@ -921,10 +965,29 @@ export function drawTicket612x396(doc, t, logoPath) {
   // =======================
   // 5) Signature (izquierda)
   // =======================
+  // Signature (izquierda)
   const signY = prodY + 50
-  doc.font('Helvetica').fontSize(8.5)
-  doc.text('Signature: ___________________________', contentX, signY)
 
+  doc.font('Helvetica').fontSize(8.5).fillColor('#000000')
+  doc.text('Signature:', contentX, signY)
+
+  const sigBoxX = contentX + 62
+  const sigBoxY = signY - 10
+  const sigBoxW = LEFT_W - 72
+  const sigBoxH = 48
+
+  if (t.signaturePng) {
+    try {
+      // dibuja la imagen dentro del área
+      doc.image(t.signaturePng, sigBoxX, sigBoxY, { fit: [sigBoxW, sigBoxH] })
+    } catch (e) {
+      // si algo falla, cae al underline
+      doc.text('___________________________', sigBoxX, signY)
+    }
+  } else {
+    doc.text('___________________________', sigBoxX, signY)
+  }
+  
   doc.fontSize(7)
   doc.text(
     'ALL RE-WEIGHS MUST BE DONE WITHIN 12 HOURS OF ORIGINAL WEIGH TIME.',

@@ -9,8 +9,7 @@ import { query } from '../../config/database.js'
 import { getReportSettings } from '../reports/reports.service.js'
 
 // Reusar el dibujado del ticket (YA exportado por ti)
-import { drawTicketPage } from '../reports/customerStatement/customerStatement.service.js'
-
+import { drawTicketPage, hydrateTicketsForPrint } from '../reports/customerStatement/customerStatement.service.js'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
@@ -107,7 +106,27 @@ async function buildTicketObjectFromSale(sale) {
     margin: 0,
     scale: 4
   })
+  // --- Asegurar ticket_uid (necesario para firma) ---
+  let ticket_uid = sale?.tickets?.[0]?.ticket_uid || null
 
+  if (!ticket_uid && sale?.sale_uid) {
+    const rows = await query(
+      `SELECT ticket_uid, ticket_number, printed_at
+       FROM tickets
+       WHERE sale_uid = ?
+       ORDER BY ticket_id DESC
+       LIMIT 1`,
+      [sale.sale_uid]
+    )
+    const r = rows?.[0]
+    console.log(r);
+    if (r?.ticket_uid) {
+      ticket_uid = r.ticket_uid
+      // opcional: si no había ticket_number/printed_at “reales”, toma los del ticket
+      // (esto ayuda a que sea consistente con lo impreso)
+      // if (!sale?.tickets?.length) { ... }
+    }
+  }
   // Mapeo al objeto "t" que espera tu drawTicket...
   return {
     // header
@@ -134,7 +153,9 @@ async function buildTicketObjectFromSale(sale) {
     peso_total: ax.peso_total,
 
     // fee
-    weigh_fee_text: formatCurrency(sale.total || 0)
+    weigh_fee_text: formatCurrency(sale.total || 0),
+    sale_uid: sale.sale_uid,
+    ticket_uid,
   }
 }
 
@@ -155,7 +176,19 @@ export const buildTicketPdfForSale = async (saleId) => {
     logoPath = null
   }
 
-  const t = await buildTicketObjectFromSale(sale)
+  let t = await buildTicketObjectFromSale(sale)
+
+  // Hidratar firma (NO depende de includeTickets, porque esto es ticket.pdf)
+  const [tHydrated] = await hydrateTicketsForPrint([t], {
+    withSignature: true,
+    withQr: false,       // tú ya generas qrPng aquí, no lo regenere
+    formatCurrency
+  })
+
+  t = tHydrated || t
+  // debug temporal
+  // console.log('[ticket.pdf]', { sale_uid: t.sale_uid, ticket_uid: t.ticket_uid, sig: t.signaturePng?.length || 0 })
+
 
   // IMPORTANTE:
   // drawTicketPage() hace doc.addPage(...) con el tamaño correcto (TICKET_W/TICKET_H).

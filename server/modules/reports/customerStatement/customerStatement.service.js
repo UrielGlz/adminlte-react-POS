@@ -265,6 +265,59 @@ const normalizePngBuffer = (v) => {
 
   return null
 }
+
+export const hydrateTicketsForPrint = async (tickets = [], opts = {}) => {
+  const withSignature = opts.withSignature !== false
+  const withQr = opts.withQr !== false
+  const formatCurrency = opts.formatCurrency || ((n) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n || 0)
+  )
+
+  let sigMap = new Map()
+
+  // 1) Signatures (solo si se pide y hay ticket_uid)
+  if (withSignature) {
+    const ticketUids = [...new Set((tickets || []).map(t => t?.ticket_uid).filter(Boolean))]
+    if (ticketUids.length > 0) {
+      const placeholders = ticketUids.map(() => '?').join(',')
+      const sigRows = await query(
+        `SELECT ticket_uid, signature_img
+         FROM ticket_signatures
+         WHERE ticket_uid IN (${placeholders})`,
+        ticketUids
+      )
+      for (const r of sigRows) {
+        sigMap.set(r.ticket_uid, normalizePngBuffer(r.signature_img))
+      }
+    }
+  }
+
+  // 2) Return enriched tickets
+  return await Promise.all((tickets || []).map(async (t) => {
+    // QR (si se pide)
+    let qrPng = t.qrPng || null
+    if (withQr && !qrPng) {
+      const payload = buildQrPayload({
+        sale_uid: t.sale_uid,
+        ticket_uid: t.ticket_uid,
+        payment_uid: t.payment_uid
+      })
+      qrPng = await QRCode.toBuffer(payload, {
+        type: 'png',
+        errorCorrectionLevel: 'M',
+        margin: 0,
+        scale: 4
+      })
+    }
+
+    return {
+      ...t,
+      qrPng,
+      signaturePng: withSignature ? (sigMap.get(t.ticket_uid) || null) : (t.signaturePng || null),
+      weigh_fee_text: t.weigh_fee_text || formatCurrency(t.weigh_fee ?? t.total_amount ?? 0)
+    }
+  }))
+}
 /**
  * Generar PDF
  */
@@ -296,53 +349,45 @@ export const generatePdf = async (filters = {}) => {
       minute: '2-digit'
     })
   }
-  let sigMap = new Map()
 
-  if (includeTickets) {
-    const ticketUids = [...new Set(transactions.map(t => t.ticket_uid).filter(Boolean))]
 
-    if (ticketUids.length > 0) {
-      const placeholders = ticketUids.map(() => '?').join(',')
-      const sigRows = await query(
-        `SELECT ticket_uid, signature_img
-       FROM ticket_signatures
-       WHERE ticket_uid IN (${placeholders})`,
-        ticketUids
-      )
 
-      for (const r of sigRows) {
-        sigMap.set(r.ticket_uid, normalizePngBuffer(r.signature_img))
-      }
-    }
-  }
   const logoPath = getLogoPath(settings.companyLogo)
 
-  // Pre-generar QRs
-  const ticketPages = includeTickets
-    ? await Promise.all(
-      transactions.map(async (t) => {
-        const payload = buildQrPayload({
-          sale_uid: t.sale_uid,
-          ticket_uid: t.ticket_uid,
-          payment_uid: t.payment_uid
-        })
+const ticketPages = includeTickets
+  ? await hydrateTicketsForPrint(transactions, {
+      withQr: true,
+      withSignature: true,
+      formatCurrency
+    })
+  : []
 
-        const qrPng = await QRCode.toBuffer(payload, {
-          type: 'png',
-          errorCorrectionLevel: 'M',
-          margin: 0,
-          scale: 4
-        })
+  // // Pre-generar QRs
+  // const ticketPages = includeTickets
+  //   ? await Promise.all(
+  //     transactions.map(async (t) => {
+  //       const payload = buildQrPayload({
+  //         sale_uid: t.sale_uid,
+  //         ticket_uid: t.ticket_uid,
+  //         payment_uid: t.payment_uid
+  //       })
 
-        return {
-          ...t,
-          qrPng,
-          signaturePng: sigMap.get(t.ticket_uid) || null,
-          weigh_fee_text: formatCurrency(t.weigh_fee ?? t.total_amount ?? 0)
-        }
-      })
-    )
-    : []
+  //       const qrPng = await QRCode.toBuffer(payload, {
+  //         type: 'png',
+  //         errorCorrectionLevel: 'M',
+  //         margin: 0,
+  //         scale: 4
+  //       })
+
+  //       return {
+  //         ...t,
+  //         qrPng,
+  //         signaturePng: sigMap.get(t.ticket_uid) || null,
+  //         weigh_fee_text: formatCurrency(t.weigh_fee ?? t.total_amount ?? 0)
+  //       }
+  //     })
+  //   )
+  //   : []
 
   return new Promise((resolve, reject) => {
     try {
@@ -975,7 +1020,7 @@ export function drawTicket612x396(doc, t, logoPath) {
   const sigBoxY = signY - 10
   const sigBoxW = LEFT_W - 72
   const sigBoxH = 48
-
+  
   if (t.signaturePng) {
     try {
       // dibuja la imagen dentro del área

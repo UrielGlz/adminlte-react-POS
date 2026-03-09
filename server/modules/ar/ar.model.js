@@ -155,7 +155,7 @@ export const getPaymentHistory = async (customerId, limit = 50) => {
         WHEN ap.status = 'CREDIT_BALANCE' THEN 'Credit Balance'
         WHEN ap.status = 'APPLIED' THEN 'Applied'
         WHEN ap.status = 'PARTIAL' THEN 'Partial'
-        WHEN ap.status = 'VOIDED' THEN 'Voided'
+        WHEN ap.status = 'VOIDED' THEN 'Void'
         ELSE ap.status
       END AS status_label,
       ap.reference_number,
@@ -310,7 +310,7 @@ export const getAllPaymentHistory = async (filters = {}) => {
         WHEN ap.status = 'CREDIT_BALANCE' THEN 'Credit Balance'
         WHEN ap.status = 'APPLIED' THEN 'Applied'
         WHEN ap.status = 'PARTIAL' THEN 'Partial'
-        WHEN ap.status = 'VOIDED' THEN 'Voided'
+        WHEN ap.status = 'VOIDED' THEN 'Void'
         ELSE ap.status
       END AS status_label,
       ap.reference_number,

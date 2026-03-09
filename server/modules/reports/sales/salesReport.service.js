@@ -84,6 +84,11 @@ export const getData = async (filters = {}) => {
       s.created_at,
       p.name as product_type,
       c.account_name as customer_name,
+      sdi.driver_first_name,
+      sdi.driver_last_name,
+      sdi.trailer_number,
+      sdi.tractor_number,
+      sdi.vehicle_plates,
       u.full_name as operator_name,
       (SELECT pm2.name 
        FROM payments pay2 
@@ -334,18 +339,20 @@ export const generatePdf = async (filters = {}) => {
 
       // FIX: drawFooter se elimina del loop; se dibuja al final con switchToPage
 
-      // Tabla config (sin cambios)
+      // Tabla config — 15 columnas
+      // Ticket#, Type, Date, Customer, Driver, Trailer#, Tractor#, Scale Op, Plates, Payment, Weight, Subtotal, Tax, Total, Status
       const tableLeft = marginLeft
-      const colWidths = [70, 55, 90, 95, 80, 60, 60, 50, 55, 55]
+      const colWidths = [42, 35, 58, 58, 52, 35, 35, 50, 38, 42, 42, 42, 38, 42, 43]
       const tableWidth = colWidths.reduce((a, b) => a + b, 0)
-      const headers = ['Ticket #', 'Type', 'Date', 'Customer', 'Operator', 'Payment', 'Weight', 'Subtotal', 'Tax', 'Total']
+      const headers = ['Ticket #', 'Type', 'Date', 'Customer', 'Driver', 'Trailer#', 'Tractor#', 'Scale Op', 'Plates', 'Payment', 'Weight', 'Subtotal', 'Tax', 'Total', 'Status']
 
       const drawTableHeader = (y) => {
         doc.rect(tableLeft, y, tableWidth, 14).fill(headerBg)
-        doc.fontSize(7).fillColor('#FFFFFF').font('Helvetica-Bold')
+        doc.fontSize(6).fillColor('#FFFFFF').font('Helvetica-Bold')
         let xPos = tableLeft + 2
         headers.forEach((header, i) => {
-          doc.text(header, xPos, y + 4, { width: colWidths[i] - 4, align: i >= 6 ? 'right' : 'left' })
+          const align = (i >= 10 && i <= 13) ? 'right' : (i === 14 ? 'center' : 'left')
+          doc.text(header, xPos, y + 4, { width: colWidths[i] - 4, align })
           xPos += colWidths[i]
         })
         return y + 14
@@ -389,31 +396,41 @@ export const generatePdf = async (filters = {}) => {
           doc.rect(tableLeft, yPos, tableWidth, rowHeight).fill(altRowBg)
         }
 
-        // Datos de la fila (sin cambios)
+        // Datos de la fila — 15 columnas
         const row = data[rowIndex]
+        const driverName = [row.driver_first_name, row.driver_last_name].filter(Boolean).join(' ') || '-'
+        const statusColor = row.status_code === 'CANCELLED' ? '#dc3545' : '#28a745'
+
         const rowData = [
           row.ticket_number || '-',
           row.product_type || '-',
           formatDate(row.created_at),
-          (row.customer_name || 'Walk-in').substring(0, 16),
-          (row.operator_name || '-').substring(0, 12),
+          (row.customer_name || 'Walk-in').substring(0, 12),
+          driverName.substring(0, 10),
+          row.trailer_number || '-',
+          row.tractor_number || '-',
+          (row.operator_name || '-').substring(0, 10),
+          row.vehicle_plates || '-',
           (row.payment_method || '-').substring(0, 10),
           formatNumber(row.gross_weight),
           formatCurrency(row.subtotal),
           formatCurrency(row.tax_amount),
-          formatCurrency(row.total_amount)
+          formatCurrency(row.total_amount),
+          row.status_label || row.status_code || '-'
         ]
 
-        doc.fontSize(6).font('Helvetica')
+        doc.fontSize(5.5).font('Helvetica')
         let xPos = tableLeft + 2
         rowData.forEach((cell, i) => {
           if (i === 1) {
             const typeColor = cell === 'Weigh' ? '#17a2b8' : '#6f42c1'
             doc.fillColor(typeColor).font('Helvetica-Bold')
+          } else if (i === 14) {
+            doc.fillColor(statusColor).font('Helvetica-Bold')
           } else {
             doc.fillColor('#000000').font('Helvetica')
           }
-          const align = i >= 6 ? 'right' : 'left'
+          const align = (i >= 10 && i <= 13) ? 'right' : (i === 14 ? 'center' : 'left')
           doc.text(String(cell), xPos, yPos + 4, { width: colWidths[i] - 4, align })
           xPos += colWidths[i]
         })
@@ -539,13 +556,12 @@ export const generateExcel = async (filters = {}) => {
   })
 
   // Header
-  const totalCols = 10
-  worksheet.mergeCells('A1:J1')
+  worksheet.mergeCells('A1:O1')
   worksheet.getCell('A1').value = settings.companyName
   worksheet.getCell('A1').font = { size: 16, bold: true, color: { argb: '2E75B6' } }
   worksheet.getCell('A1').alignment = { horizontal: 'center' }
 
-  worksheet.mergeCells('A2:J2')
+  worksheet.mergeCells('A2:O2')
   worksheet.getCell('A2').value = 'Sales Report'
   worksheet.getCell('A2').font = { size: 12, bold: true }
   worksheet.getCell('A2').alignment = { horizontal: 'center' }
@@ -555,20 +571,21 @@ export const generateExcel = async (filters = {}) => {
     filters.date_to ? `To: ${filters.date_to}` : ''
   ].filter(Boolean).join(' | ') || 'All records'
 
-  worksheet.mergeCells('A3:J3')
+  worksheet.mergeCells('A3:O3')
   worksheet.getCell('A3').value = `Generated: ${new Date().toLocaleString('en-US')} | ${filterText}`
   worksheet.getCell('A3').font = { size: 9, italic: true, color: { argb: '666666' } }
   worksheet.getCell('A3').alignment = { horizontal: 'center' }
 
   worksheet.addRow([])
 
-  // Column widths
-  const colWidths = [14, 10, 20, 22, 18, 14, 12, 12, 12, 12]
+  // Column widths — 15 columns
+  // Ticket#, Type, Date, Customer, Driver, Trailer#, Tractor#, Scale Op, Plates, Payment, Weight, Subtotal, Tax, Total, Status
+  const colWidths = [12, 10, 20, 20, 18, 12, 12, 16, 12, 14, 12, 12, 12, 12, 12]
   colWidths.forEach((w, i) => worksheet.getColumn(i + 1).width = w)
 
   // Table header
   const headerRow = 5
-  const headers = ['Ticket #', 'Type', 'Date', 'Customer', 'Operator', 'Payment', 'Weight', 'Subtotal', 'Tax', 'Total']
+  const headers = ['Ticket #', 'Type', 'Date', 'Customer', 'Driver', 'Trailer#', 'Tractor#', 'Scale Op', 'Plates', 'Payment', 'Weight', 'Subtotal', 'Tax', 'Total', 'Status']
 
   headers.forEach((h, i) => {
     const cell = worksheet.getCell(headerRow, i + 1)
@@ -587,17 +604,26 @@ export const generateExcel = async (filters = {}) => {
   // Data rows
   let currentRow = headerRow + 1
   data.forEach((row, index) => {
+    const driverName = [row.driver_first_name, row.driver_last_name].filter(Boolean).join(' ') || '-'
+    const statusLabel = row.status_label || row.status_code || '-'
+    const statusColor = row.status_code === 'CANCELLED' ? 'DC3545' : '28A745'
+
     const rowData = [
       row.ticket_number || '-',
       row.product_type || '-',
       formatDate(row.created_at),
       row.customer_name || 'Walk-in',
+      driverName,
+      row.trailer_number || '-',
+      row.tractor_number || '-',
       row.operator_name || '-',
+      row.vehicle_plates || '-',
       row.payment_method || '-',
       parseFloat(row.gross_weight) || 0,
       parseFloat(row.subtotal) || 0,
       parseFloat(row.tax_amount) || 0,
-      parseFloat(row.total_amount) || 0
+      parseFloat(row.total_amount) || 0,
+      statusLabel
     ]
 
     rowData.forEach((value, colIndex) => {
@@ -615,14 +641,14 @@ export const generateExcel = async (filters = {}) => {
         right: { style: 'thin', color: { argb: 'CCCCCC' } }
       }
 
-      // Currency format para subtotal, tax, total
-      if (colIndex >= 7 && colIndex <= 9) {
+      // Currency format para subtotal, tax, total (cols 11,12,13 = indices 11,12,13)
+      if (colIndex >= 11 && colIndex <= 13) {
         cell.numFmt = '"$"#,##0.00'
         cell.alignment = { horizontal: 'right' }
       }
 
-      // Number format for weight
-      if (colIndex === 6) {
+      // Number format for weight (col 10 = index 10)
+      if (colIndex === 10) {
         cell.numFmt = '#,##0.00'
         cell.alignment = { horizontal: 'right' }
       }
@@ -632,6 +658,12 @@ export const generateExcel = async (filters = {}) => {
         const typeColor = value === 'Weigh' ? '17A2B8' : '6F42C1'
         cell.font = { bold: true, color: { argb: typeColor } }
       }
+
+      // Status color
+      if (colIndex === 14) {
+        cell.font = { bold: true, color: { argb: statusColor } }
+        cell.alignment = { horizontal: 'center' }
+      }
     })
 
     currentRow++
@@ -639,7 +671,7 @@ export const generateExcel = async (filters = {}) => {
 
   // Summary
   currentRow++
-  worksheet.mergeCells(`A${currentRow}:F${currentRow}`)
+  worksheet.mergeCells(`A${currentRow}:H${currentRow}`)
   const summaryHeader = worksheet.getCell(`A${currentRow}`)
   summaryHeader.value = 'Summary'
   summaryHeader.font = { bold: true }

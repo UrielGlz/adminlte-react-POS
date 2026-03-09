@@ -24,7 +24,61 @@ const getLogoPath = (logoFilename) => {
 }
 
 /**
+ * Normaliza el método de pago a una clave estándar
+ * Reutilizable por pantalla, PDF y Excel
+ */
+const normalizePaymentMethod = (value) => {
+  const v = String(value || '').trim().toLowerCase()
+
+  if (v === 'cash' || v.includes('cash')) return 'cash'
+
+  if (
+    v === 'card' ||
+    v.includes('card') ||
+    v.includes('credit') ||
+    v.includes('debit')
+  ) return 'card'
+
+  if (
+    v === 'business_account' ||
+    v === 'business account' ||
+    v.includes('business')
+  ) return 'business_account'
+
+  return null
+}
+
+/**
+ * Construye el resumen por método de pago en formato normalizado
+ * Estructura reutilizable por pantalla, PDF y Excel
+ */
+const buildPaymentSummary = (transactions = []) => {
+  const summary = {
+    cash: { key: 'cash', label: 'Cash', count: 0, total: 0 },
+    business_account: { key: 'business_account', label: 'Business Account', count: 0, total: 0 },
+    card: { key: 'card', label: 'Card', count: 0, total: 0 }
+  }
+
+  transactions.forEach(row => {
+    const paymentKey = normalizePaymentMethod(row.payment_method || row.payment_method_code)
+    if (!paymentKey || !summary[paymentKey]) return
+
+    summary[paymentKey].count += 1
+    summary[paymentKey].total += parseFloat(row.total_amount) || 0
+  })
+
+  return summary
+}
+
+/**
  * Obtener datos del reporte
+ *
+ * Retorna: { transactions, totals, payment_summary }
+ *
+ * - transactions: array de filas para tabla principal
+ * - totals: conteos y sumas para KPIs
+ * - payment_summary: resumen normalizado por método de pago
+ *   (Cash, Business Account, Card) — reutilizable por pantalla, PDF y Excel
  */
 export const getData = async (filters = {}) => {
   const {
@@ -116,12 +170,12 @@ export const getData = async (filters = {}) => {
     sql += ` AND DATE(s.created_at) <= ?`
     params.push(date_to)
   }
-  
+
   if (payment_method !== 'all') {
     sql += ` AND EXISTS (SELECT 1 FROM payments pay WHERE pay.sale_uid = s.sale_uid AND pay.method_id = ?)`
     params.push(payment_method)
   }
-  
+
   if (product_type !== 'all') {
     sql += ` AND p.product_id = ?`
     params.push(product_type)
@@ -135,7 +189,10 @@ export const getData = async (filters = {}) => {
 
   const transactions = await query(sql, params)
 
-  // Calcular totales
+  // payment_summary normalizado (reutilizable por pantalla, PDF y Excel)
+  const payment_summary = buildPaymentSummary(transactions)
+
+  // Totales para KPIs
   const totals = {
     total_transactions: transactions.length,
     total_weigh: transactions.filter(t => t.product_code === 'WEIGH' || t.product_type === 'Weigh').length,
@@ -148,21 +205,10 @@ export const getData = async (filters = {}) => {
     total_pending: transactions.reduce((sum, t) => sum + (parseFloat(t.balance_due) || 0), 0),
     count_completed: transactions.filter(t => t.sale_status_code === 'COMPLETED').length,
     count_open: transactions.filter(t => t.sale_status_code === 'OPEN').length,
-    count_cancelled: transactions.filter(t => t.sale_status_code === 'CANCELLED').length,
-    by_payment_method: {}
+    count_cancelled: transactions.filter(t => t.sale_status_code === 'CANCELLED').length
   }
 
-  // Agrupar por método de pago
-  transactions.forEach(t => {
-    const method = t.payment_method || 'Unknown'
-    if (!totals.by_payment_method[method]) {
-      totals.by_payment_method[method] = { count: 0, amount: 0 }
-    }
-    totals.by_payment_method[method].count++
-    totals.by_payment_method[method].amount += parseFloat(t.total_amount) || 0
-  })
-
-  return { transactions, totals }
+  return { transactions, totals, payment_summary }
 }
 
 /**
@@ -195,14 +241,15 @@ export const getFilterOptions = async () => {
 
 /**
  * Generar PDF
- * MODIFICADO:
- * - Agregado encabezado con Company Name | Address | Phone
- * - Cambiado "Type" por "Service"
- * - Agregadas columnas: Driver, Trailer #, Tractor #, Scale Op
- * - Quitadas columnas: Subtotal y Tax
+ *
+ * Patrón robusto (igual que Sales Report y Customer Statement):
+ * - bufferPages: true para footers con conteo real
+ * - Detección dinámica de última página
+ * - Summary + Balance Summary by Payment Method al final sin sobreposición
+ * - Footer con "Page X of Y" real
  */
 export const generatePdf = async (filters = {}) => {
-  const { transactions, totals } = await getData(filters)
+  const { transactions, totals, payment_summary } = await getData(filters)
   const settings = await getReportSettings()
 
   const formatCurrency = (val) => {
@@ -229,7 +276,8 @@ export const generatePdf = async (filters = {}) => {
       const doc = new PDFDocument({
         size: 'LETTER',
         layout: 'landscape',
-        margins: { top: 30, bottom: 30, left: 30, right: 30 }
+        margins: { top: 30, bottom: 30, left: 30, right: 30 },
+        bufferPages: true  // Para footers con conteo real de páginas
       })
 
       const buffers = []
@@ -254,18 +302,34 @@ export const generatePdf = async (filters = {}) => {
       const contentWidth = pageWidth - marginLeft - marginRight
       const footerY = pageHeight - doc.page.margins.bottom - 12
       const rowHeight = 12
-
-      // Paginación
-      const headerAreaHeight = 145 // Aumentado para incluir línea de company info
+      const headerAreaHeight = 145
       const tableHeaderHeight = 14
-      const footerHeight = 30
-      const availableForRows = pageHeight - 70 - tableHeaderHeight - footerHeight
-      const rowsFirstPage = Math.floor((pageHeight - headerAreaHeight - tableHeaderHeight - footerHeight) / rowHeight)
-      const rowsPerPage = Math.floor(availableForRows / rowHeight)
 
-      const totalPages = Math.max(1, Math.ceil((transactions.length - rowsFirstPage) / rowsPerPage) + 1)
-      let currentPage = 1
-      let rowIndex = 0
+      // ===== Dimensiones de bloques inferiores (calculadas ANTES del render) =====
+      const paymentRows = Object.values(payment_summary || {})
+
+      const summaryBoxWidth = 500
+      const summaryHeaderHeight = 16
+      const summaryBodyHeight = 28
+      const summaryBlockHeight = summaryHeaderHeight + summaryBodyHeight
+
+      const paymentTableWidth = 500
+      const paymentTitleHeight = 16
+      const paymentHeaderHeight = 14
+      const paymentRowHeight = 14
+      const paymentColWidths = [260, 100, 140]
+      const paymentHeaders = ['Method', 'Qty', 'Amount']
+      const paymentTableHeight =
+        paymentTitleHeight + paymentHeaderHeight + (paymentRows.length * paymentRowHeight)
+
+      const gapBetweenBlocks = 8
+      const bottomGapFromFooter = 8
+
+      const totalBottomBlocksHeight =
+        bottomGapFromFooter + paymentTableHeight + gapBetweenBlocks + summaryBlockHeight
+
+      const summaryAreaTop = footerY - totalBottomBlocksHeight
+      const normalPageLimit = footerY - 5
 
       // Fecha del reporte
       const dateRange = [
@@ -280,14 +344,12 @@ export const generatePdf = async (filters = {}) => {
       const drawMainHeader = () => {
         const headerTop = 15
 
-        // Logo
         if (logoPath) {
           try {
             doc.image(logoPath, marginLeft, headerTop, { fit: [50, 30] })
           } catch (e) { /* ignore */ }
         }
 
-        // Título
         doc.fontSize(14).fillColor(primaryColor).font('Helvetica-Bold')
           .text(settings.companyName, marginLeft + 60, headerTop + 3, { width: contentWidth - 180, align: 'center' })
 
@@ -298,10 +360,9 @@ export const generatePdf = async (filters = {}) => {
           .text(`Generated: ${new Date().toLocaleString('en-US')}`, rightX, headerTop + 5, { width: rightColW, align: 'right', ellipsis: true })
           .text(dateRange, rightX, headerTop + 15, { width: rightColW, align: 'right', ellipsis: true })
 
-        // Línea separadora
         doc.moveTo(marginLeft, 48).lineTo(pageWidth - marginRight, 48).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
 
-        // NUEVA LÍNEA: Company Name | Address | Phone
+        // Company info line
         const companyInfoLine = [
           settings.companyName || '',
           settings.companyAddress || '',
@@ -311,10 +372,9 @@ export const generatePdf = async (filters = {}) => {
         doc.fontSize(7).fillColor(textGray).font('Helvetica')
           .text(companyInfoLine, marginLeft, 52, { width: contentWidth, align: 'center' })
 
-        // ========== RESUMEN ==========
+        // ========== RESUMEN CARDS ==========
         let yPos = 65
 
-        // Cards de resumen
         const cardWidth = 85
         const cardHeight = 35
         const cardGap = 8
@@ -338,7 +398,7 @@ export const generatePdf = async (filters = {}) => {
           cardX += cardWidth + cardGap
         })
 
-        // Totales financieros (sin Subtotal y Tax)
+        // Totales financieros
         yPos += cardHeight + 10
         doc.fontSize(7).fillColor('#333333').font('Helvetica')
         doc.text(`Total Weight: ${formatNumber(totals.total_weight)} lb`, marginLeft, yPos)
@@ -346,12 +406,12 @@ export const generatePdf = async (filters = {}) => {
         doc.fillColor(successColor).text(`Paid: ${formatCurrency(totals.total_paid)}`, marginLeft + 280, yPos)
         doc.fillColor(dangerColor).text(`Pending: ${formatCurrency(totals.total_pending)}`, marginLeft + 400, yPos)
 
-        // Por método de pago
+        // Por método de pago (inline, compacto)
         yPos += 12
         doc.fontSize(6).fillColor(textGray).font('Helvetica')
         let methodX = marginLeft
-        Object.entries(totals.by_payment_method).forEach(([method, data]) => {
-          doc.text(`${method}: ${data.count} (${formatCurrency(data.amount)})`, methodX, yPos)
+        paymentRows.forEach(item => {
+          doc.text(`${item.label}: ${item.count} (${formatCurrency(item.total)})`, methodX, yPos)
           methodX += 130
         })
 
@@ -362,25 +422,15 @@ export const generatePdf = async (filters = {}) => {
       const drawSimpleHeader = () => {
         doc.fontSize(10).fillColor(primaryColor).font('Helvetica-Bold')
           .text(`${settings.companyName} - Cash Sales Report`, marginLeft, 20)
-        doc.fontSize(8).fillColor(textGray).font('Helvetica')
-          .text(`Page ${currentPage} of ${totalPages}`, pageWidth - marginRight - 60, 20, { width: 60, align: 'right' })
 
         doc.moveTo(marginLeft, 35).lineTo(pageWidth - marginRight, 35).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
 
         return 45
       }
 
-      // ========== FOOTER ==========
-      const drawFooter = () => {
-        doc.fontSize(6).fillColor(textGray).font('Helvetica')
-        doc.text(settings.companyAddress || '', marginLeft, footerY)
-        doc.text(`Page ${currentPage} of ${totalPages}`, pageWidth - marginRight - 80, footerY, { width: 80, align: 'right' })
-      }
-
       // ========== TABLA ==========
-      // Nuevo orden: Ticket #, Service, Date, Driver, Trailer #, Tractor #, Scale Op, Plates, Weight, Total, Paid, Method, Status
       const tableLeft = marginLeft
-      const colWidths = [50, 45, 65, 70, 50, 50, 65, 50, 45, 50, 50, 50, 55] // 13 columnas
+      const colWidths = [50, 45, 65, 70, 50, 50, 65, 50, 45, 50, 50, 50, 55]
       const tableWidth = colWidths.reduce((a, b) => a + b, 0)
       const headers = ['Ticket #', 'Service', 'Date', 'Driver', 'Trailer #', 'Tractor #', 'Scale Op', 'Plates', 'Weight', 'Total', 'Paid', 'Method', 'Status']
 
@@ -389,7 +439,7 @@ export const generatePdf = async (filters = {}) => {
         doc.fontSize(6).fillColor('#FFFFFF').font('Helvetica-Bold')
         let xPos = tableLeft + 2
         headers.forEach((header, i) => {
-          const align = i >= 8 ? 'right' : 'left' // Weight, Total, Paid alineados a la derecha
+          const align = i >= 8 && i <= 10 ? 'right' : 'left'
           doc.text(header, xPos, y + 4, { width: colWidths[i] - 4, align })
           xPos += colWidths[i]
         })
@@ -405,23 +455,29 @@ export const generatePdf = async (filters = {}) => {
 
       // ========== RENDER ==========
       let yPos = drawMainHeader()
-      const tableTopY = yPos
-
+      let tableTopY = yPos
       yPos = drawTableHeader(yPos)
-
-      const footerGap = 8
-      const bottomLimit = footerY - footerGap
+      let rowIndex = 0
 
       while (rowIndex < transactions.length) {
-        const row = transactions[rowIndex]
+        // ---------------------------------------------------------------
+        // Detección dinámica de última página (patrón Sales Report)
+        // ---------------------------------------------------------------
+        const remainingRows = transactions.length - rowIndex
+        const yAfterAllRemaining = yPos + (remainingRows * rowHeight)
+        const fitsWithSummary = yAfterAllRemaining <= summaryAreaTop
+        const pageLimit = fitsWithSummary ? summaryAreaTop : normalPageLimit
 
-        if (yPos + rowHeight > bottomLimit) {
-          drawFooter()
+        if (yPos + rowHeight > pageLimit) {
+          // Borde de tabla en esta página
+          doc.rect(tableLeft, tableTopY, tableWidth, yPos - tableTopY)
+            .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
+
           doc.addPage()
-          currentPage++
           yPos = drawSimpleHeader()
+          tableTopY = yPos
           yPos = drawTableHeader(yPos)
-          continue
+          continue  // re-evaluar
         }
 
         // Fondo alternado
@@ -429,10 +485,10 @@ export const generatePdf = async (filters = {}) => {
           doc.rect(tableLeft, yPos, tableWidth, rowHeight).fill(altRowBg)
         }
 
+        const row = transactions[rowIndex]
         const driverName = [row.driver_first_name, row.driver_last_name].filter(Boolean).join(' ') || '-'
         const statusColor = getStatusColor(row.sale_status_code)
 
-        // Nuevo orden de datos (sin Subtotal y Tax, con nuevas columnas)
         const rowData = [
           row.ticket_number || '-',
           row.product_type || '-',
@@ -452,19 +508,15 @@ export const generatePdf = async (filters = {}) => {
         doc.fontSize(5.5).font('Helvetica')
         let xPos = tableLeft + 2
         rowData.forEach((cell, i) => {
-          // Status (última columna)
           if (i === 12) {
             doc.fillColor(statusColor).font('Helvetica-Bold')
-          }
-          // Service (columna 1)
-          else if (i === 1) {
+          } else if (i === 1) {
             const typeColor = cell === 'Weigh' ? '#17a2b8' : '#6f42c1'
             doc.fillColor(typeColor).font('Helvetica-Bold')
-          }
-          else {
+          } else {
             doc.fillColor('#333333').font('Helvetica')
           }
-          const align = i >= 8 && i <= 10 ? 'right' : 'left' // Weight, Total, Paid
+          const align = i >= 8 && i <= 10 ? 'right' : 'left'
           doc.text(String(cell), xPos, yPos + 3, { width: colWidths[i] - 4, align })
           xPos += colWidths[i]
         })
@@ -473,11 +525,107 @@ export const generatePdf = async (filters = {}) => {
         rowIndex++
       }
 
-      // Borde tabla
+      // Borde final de tabla
       doc.rect(tableLeft, tableTopY, tableWidth, yPos - tableTopY)
         .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
 
-      drawFooter()
+      // =====================================================================
+      // Si la tabla invadió la zona del summary → nueva página
+      // (mismo fix adicional que Customer Statement)
+      // =====================================================================
+      if (yPos > summaryAreaTop) {
+        doc.addPage()
+        drawSimpleHeader()
+      }
+
+      // ========== SUMMARY + PAYMENT SUMMARY (anclados al fondo) ==========
+      const paymentTableTop = footerY - bottomGapFromFooter - paymentTableHeight
+      const summaryTop = paymentTableTop - gapBetweenBlocks - summaryBlockHeight
+
+      // Summary general
+      doc.rect(tableLeft, summaryTop, summaryBoxWidth, summaryHeaderHeight).fill('#E7E6E6')
+      doc.fontSize(8).fillColor('#000000').font('Helvetica-Bold')
+        .text('Summary', tableLeft, summaryTop + 4, { width: summaryBoxWidth, align: 'center' })
+
+      doc.fontSize(7).fillColor('#000000').font('Helvetica')
+      doc.text(`Total Transactions: ${totals.total_transactions}`, tableLeft + 6, summaryTop + 22)
+      doc.text(`Weigh: ${totals.total_weigh}`, tableLeft + 130, summaryTop + 22)
+      doc.text(`Reweigh: ${totals.total_reweigh}`, tableLeft + 200, summaryTop + 22)
+      doc.text(`Total Weight: ${formatNumber(totals.total_weight)} lb`, tableLeft + 280, summaryTop + 22)
+
+      doc.font('Helvetica-Bold')
+      doc.text(`Total: ${formatCurrency(totals.total_amount)}`, tableLeft + 6, summaryTop + 34)
+      doc.fillColor(successColor).text(`Paid: ${formatCurrency(totals.total_paid)}`, tableLeft + 140, summaryTop + 34)
+      doc.fillColor(dangerColor).text(`Pending: ${formatCurrency(totals.total_pending)}`, tableLeft + 300, summaryTop + 34)
+
+      doc.rect(tableLeft, summaryTop, summaryBoxWidth, summaryBlockHeight)
+        .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
+
+      // Balance Summary by Payment Method
+      doc.rect(tableLeft, paymentTableTop, paymentTableWidth, paymentTitleHeight).fill(headerBg)
+      doc.fontSize(8).fillColor('#FFFFFF').font('Helvetica-Bold')
+        .text('Balance Summary by Payment Method', tableLeft, paymentTableTop + 4, {
+          width: paymentTableWidth,
+          align: 'center'
+        })
+
+      const paymentHeaderY = paymentTableTop + paymentTitleHeight
+      doc.rect(tableLeft, paymentHeaderY, paymentTableWidth, paymentHeaderHeight).fill('#D9E2F3')
+      doc.fontSize(7).fillColor('#000000').font('Helvetica-Bold')
+
+      let px = tableLeft + 3
+      paymentHeaders.forEach((header, i) => {
+        const align = i === 0 ? 'left' : 'right'
+        doc.text(header, px, paymentHeaderY + 4, {
+          width: paymentColWidths[i] - 6,
+          align
+        })
+        px += paymentColWidths[i]
+      })
+
+      let rowY = paymentHeaderY + paymentHeaderHeight
+      paymentRows.forEach((item, index) => {
+        if (index % 2 === 0) {
+          doc.rect(tableLeft, rowY, paymentTableWidth, paymentRowHeight).fill('#F7F7F7')
+        }
+
+        doc.fontSize(7).fillColor('#000000').font('Helvetica')
+
+        let cellX = tableLeft + 3
+        const rowCells = [item.label, String(item.count), formatCurrency(item.total)]
+
+        rowCells.forEach((cell, i) => {
+          const align = i === 0 ? 'left' : 'right'
+          doc.text(String(cell), cellX, rowY + 4, {
+            width: paymentColWidths[i] - 6,
+            align
+          })
+          cellX += paymentColWidths[i]
+        })
+
+        rowY += paymentRowHeight
+      })
+
+      doc.rect(tableLeft, paymentTableTop, paymentTableWidth, paymentTableHeight)
+        .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
+
+      // =====================================================================
+      // Footers con conteo REAL usando switchToPage
+      // =====================================================================
+      const range = doc.bufferedPageRange()
+      const totalPages = range.count
+
+      for (let i = 0; i < totalPages; i++) {
+        doc.switchToPage(i)
+        doc.fontSize(6).fillColor(textGray).font('Helvetica')
+        doc.text(settings.companyAddress || '', marginLeft, footerY, { lineBreak: false })
+        doc.text(`Page ${i + 1} of ${totalPages}`, pageWidth - marginRight - 80, footerY, {
+          width: 80,
+          align: 'right',
+          lineBreak: false
+        })
+      }
+
       doc.end()
     } catch (error) {
       reject(error)
@@ -487,14 +635,13 @@ export const generatePdf = async (filters = {}) => {
 
 /**
  * Generar Excel
- * MODIFICADO:
- * - Agregada fila con Company Name | Address | Phone
- * - Cambiado "Type" por "Service"
- * - Agregadas columnas: Driver, Trailer #, Tractor #, Scale Op
- * - Quitadas columnas: Subtotal y Tax
+ *
+ * Incluye: header, summary cards, tabla principal,
+ *          y bloque "Balance Summary by Payment Method" al final.
+ * Reutiliza totals y payment_summary de getData().
  */
 export const generateExcel = async (filters = {}) => {
-  const { transactions, totals } = await getData(filters)
+  const { transactions, totals, payment_summary } = await getData(filters)
   const settings = await getReportSettings()
 
   const formatDate = (date) => date ? new Date(date).toLocaleString('en-US') : '-'
@@ -508,20 +655,17 @@ export const generateExcel = async (filters = {}) => {
   })
 
   // ========== HEADER (A..M = 13 columnas) ==========
-  
-  // Fila 1: Company Name
+
   worksheet.mergeCells('A1:M1')
   worksheet.getCell('A1').value = settings.companyName
   worksheet.getCell('A1').font = { size: 16, bold: true, color: { argb: '17A2B8' } }
   worksheet.getCell('A1').alignment = { horizontal: 'center' }
 
-  // Fila 2: Cash Sales Report
   worksheet.mergeCells('A2:M2')
   worksheet.getCell('A2').value = 'Cash Sales Report'
   worksheet.getCell('A2').font = { size: 12, bold: true }
   worksheet.getCell('A2').alignment = { horizontal: 'center' }
 
-  // Fila 3: Generated + Date Range
   const fmtShort = (v) => v ? String(v).slice(0, 10) : ''
   const dateRange = [
     filters.date_from ? `From: ${fmtShort(filters.date_from)}` : '',
@@ -533,7 +677,6 @@ export const generateExcel = async (filters = {}) => {
   worksheet.getCell('A3').font = { size: 9, italic: true, color: { argb: '666666' } }
   worksheet.getCell('A3').alignment = { horizontal: 'center' }
 
-  // Fila 4: Company Name | Address | Phone (NUEVA)
   worksheet.mergeCells('A4:M4')
   const companyInfoLine = [
     settings.companyName || '',
@@ -546,7 +689,7 @@ export const generateExcel = async (filters = {}) => {
 
   worksheet.addRow([]) // Fila 5 vacía
 
-  // ========== SUMMARY (ahora empieza en fila 6) ==========
+  // ========== SUMMARY ==========
   worksheet.mergeCells('A6:M6')
   const summHeader = worksheet.getCell('A6')
   summHeader.value = 'Summary'
@@ -570,7 +713,6 @@ export const generateExcel = async (filters = {}) => {
   worksheet.getCell('F8').value = totals.count_cancelled
   worksheet.getCell('F8').font = { color: { argb: 'DC3545' } }
 
-  // Totales financieros (sin Subtotal y Tax detallados, solo Total)
   worksheet.getCell('A9').value = 'Total Weight:'
   worksheet.getCell('B9').value = totals.total_weight
   worksheet.getCell('B9').numFmt = '#,##0.00'
@@ -590,15 +732,12 @@ export const generateExcel = async (filters = {}) => {
 
   worksheet.addRow([]) // Fila 10 vacía
 
-  // ========== TABLE (empieza en fila 11) ==========
+  // ========== TABLE ==========
   const tableStartRow = 11
 
-  // Anchos de columna (13 columnas)
-  // Orden: Ticket #, Service, Date, Driver, Trailer #, Tractor #, Scale Op, Plates, Weight, Total, Paid, Method, Status
   const colWidths = [14, 10, 18, 18, 12, 12, 16, 12, 12, 12, 12, 14, 12]
   colWidths.forEach((w, i) => worksheet.getColumn(i + 1).width = w)
 
-  // Headers
   const headers = ['Ticket #', 'Service', 'Date', 'Driver', 'Trailer #', 'Tractor #', 'Scale Op', 'Plates', 'Weight', 'Total', 'Paid', 'Method', 'Status']
   headers.forEach((h, i) => {
     const cell = worksheet.getCell(tableStartRow, i + 1)
@@ -622,33 +761,30 @@ export const generateExcel = async (filters = {}) => {
       row.sale_status_code === 'COMPLETED' ? '28A745' :
         row.sale_status_code === 'OPEN' ? 'FFC107' : '666666'
 
-    // Nuevo orden de datos (sin Subtotal y Tax)
     const rowData = [
-      row.ticket_number || '-',                    // A: Ticket #
-      row.product_type || '-',                     // B: Service
-      formatDate(row.sale_date),                   // C: Date
-      driverName,                                  // D: Driver
-      row.trailer_number || '-',                   // E: Trailer #
-      row.tractor_number || '-',                   // F: Tractor #
-      row.operator_name || '-',                    // G: Scale Op
-      row.vehicle_plates || '-',                   // H: Plates
-      parseFloat(row.gross_weight) || 0,           // I: Weight
-      parseFloat(row.total_amount) || 0,           // J: Total
-      parseFloat(row.amount_paid) || 0,            // K: Paid
-      row.payment_method || '-',                   // L: Method
-      row.sale_status_label || '-'                 // M: Status
+      row.ticket_number || '-',
+      row.product_type || '-',
+      formatDate(row.sale_date),
+      driverName,
+      row.trailer_number || '-',
+      row.tractor_number || '-',
+      row.operator_name || '-',
+      row.vehicle_plates || '-',
+      parseFloat(row.gross_weight) || 0,
+      parseFloat(row.total_amount) || 0,
+      parseFloat(row.amount_paid) || 0,
+      row.payment_method || '-',
+      row.sale_status_label || '-'
     ]
 
     rowData.forEach((value, colIndex) => {
       const cell = worksheet.getCell(currentRow, colIndex + 1)
       cell.value = value
 
-      // Fondo alternado
       if (index % 2 === 0) {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F2F2F2' } }
       }
 
-      // Bordes
       cell.border = {
         top: { style: 'thin', color: { argb: 'CCCCCC' } },
         left: { style: 'thin', color: { argb: 'CCCCCC' } },
@@ -656,25 +792,21 @@ export const generateExcel = async (filters = {}) => {
         right: { style: 'thin', color: { argb: 'CCCCCC' } }
       }
 
-      // Formato currency para Total y Paid (columnas J=9 y K=10)
       if (colIndex === 9 || colIndex === 10) {
         cell.numFmt = '"$"#,##0.00'
         cell.alignment = { horizontal: 'right' }
       }
 
-      // Formato número para Weight (columna I=8)
       if (colIndex === 8) {
         cell.numFmt = '#,##0.00'
         cell.alignment = { horizontal: 'right' }
       }
 
-      // Color para Service (columna B=1)
       if (colIndex === 1) {
         const typeColor = value === 'Weigh' ? '17A2B8' : '6F42C1'
         cell.font = { bold: true, color: { argb: typeColor } }
       }
 
-      // Color para Status (columna M=12)
       if (colIndex === 12) {
         cell.font = { bold: true, color: { argb: statusColor } }
         cell.alignment = { horizontal: 'center' }
@@ -683,6 +815,112 @@ export const generateExcel = async (filters = {}) => {
 
     currentRow++
   })
+
+  // ========== BALANCE SUMMARY BY PAYMENT METHOD ==========
+  currentRow += 2
+
+  // Título
+  worksheet.mergeCells(`A${currentRow}:C${currentRow}`)
+  const paymentTitle = worksheet.getCell(`A${currentRow}`)
+  paymentTitle.value = 'Balance Summary by Payment Method'
+  paymentTitle.font = { bold: true, color: { argb: 'FFFFFF' } }
+  paymentTitle.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '138496' } }
+  paymentTitle.alignment = { horizontal: 'center', vertical: 'middle' }
+  for (let col = 1; col <= 3; col++) {
+    worksheet.getCell(currentRow, col).border = {
+      top: { style: 'thin', color: { argb: '138496' } },
+      bottom: { style: 'thin', color: { argb: '138496' } },
+      left: { style: 'thin', color: { argb: '138496' } },
+      right: { style: 'thin', color: { argb: '138496' } }
+    }
+  }
+
+  // Encabezados: Method | Qty | Amount
+  currentRow++
+  const pmHeaders = ['Method', 'Qty', 'Amount']
+  pmHeaders.forEach((h, i) => {
+    const cell = worksheet.getCell(currentRow, i + 1)
+    cell.value = h
+    cell.font = { bold: true }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'D9E2F3' } }
+    cell.alignment = { horizontal: i === 0 ? 'left' : 'right', vertical: 'middle' }
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'CCCCCC' } },
+      bottom: { style: 'thin', color: { argb: 'CCCCCC' } },
+      left: { style: 'thin', color: { argb: 'CCCCCC' } },
+      right: { style: 'thin', color: { argb: 'CCCCCC' } }
+    }
+  })
+
+  // Filas de datos
+  const paymentEntries = Object.values(payment_summary || {})
+  paymentEntries.forEach((item, index) => {
+    currentRow++
+    const rowValues = [item.label, item.count, item.total]
+
+    rowValues.forEach((value, colIndex) => {
+      const cell = worksheet.getCell(currentRow, colIndex + 1)
+      cell.value = value
+
+      if (index % 2 === 0) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F7F7F7' } }
+      }
+
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'CCCCCC' } },
+        bottom: { style: 'thin', color: { argb: 'CCCCCC' } },
+        left: { style: 'thin', color: { argb: 'CCCCCC' } },
+        right: { style: 'thin', color: { argb: 'CCCCCC' } }
+      }
+
+      if (colIndex === 0) {
+        cell.alignment = { horizontal: 'left' }
+      } else if (colIndex === 1) {
+        cell.alignment = { horizontal: 'right' }
+      } else if (colIndex === 2) {
+        cell.numFmt = '"$"#,##0.00'
+        cell.alignment = { horizontal: 'right' }
+      }
+    })
+  })
+
+  // Fila de totales
+  currentRow++
+  const totalCount = paymentEntries.reduce((sum, item) => sum + item.count, 0)
+  const totalAmount = paymentEntries.reduce((sum, item) => sum + item.total, 0)
+
+  const totalLabelCell = worksheet.getCell(currentRow, 1)
+  totalLabelCell.value = 'Total'
+  totalLabelCell.font = { bold: true }
+  totalLabelCell.border = {
+    top: { style: 'double', color: { argb: '138496' } },
+    bottom: { style: 'thin', color: { argb: 'CCCCCC' } },
+    left: { style: 'thin', color: { argb: 'CCCCCC' } },
+    right: { style: 'thin', color: { argb: 'CCCCCC' } }
+  }
+
+  const totalQtyCell = worksheet.getCell(currentRow, 2)
+  totalQtyCell.value = totalCount
+  totalQtyCell.font = { bold: true }
+  totalQtyCell.alignment = { horizontal: 'right' }
+  totalQtyCell.border = {
+    top: { style: 'double', color: { argb: '138496' } },
+    bottom: { style: 'thin', color: { argb: 'CCCCCC' } },
+    left: { style: 'thin', color: { argb: 'CCCCCC' } },
+    right: { style: 'thin', color: { argb: 'CCCCCC' } }
+  }
+
+  const totalAmtCell = worksheet.getCell(currentRow, 3)
+  totalAmtCell.value = totalAmount
+  totalAmtCell.numFmt = '"$"#,##0.00'
+  totalAmtCell.font = { bold: true }
+  totalAmtCell.alignment = { horizontal: 'right' }
+  totalAmtCell.border = {
+    top: { style: 'double', color: { argb: '138496' } },
+    bottom: { style: 'thin', color: { argb: 'CCCCCC' } },
+    left: { style: 'thin', color: { argb: 'CCCCCC' } },
+    right: { style: 'thin', color: { argb: 'CCCCCC' } }
+  }
 
   return await workbook.xlsx.writeBuffer()
 }

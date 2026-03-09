@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
@@ -113,7 +113,103 @@ function SalesReport() {
     if (!val) return '0.00'
     return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(val)
   }
+  const normalizePaymentMethod = (value) => {
+    const v = String(value || '').trim().toLowerCase()
 
+    if (
+      v === 'cash' ||
+      v.includes('cash')
+    ) return 'cash'
+
+    if (
+      v === 'card' ||
+      v.includes('card') ||
+      v.includes('credit') ||
+      v.includes('debit')
+    ) return 'card'
+
+    if (
+      v === 'business_account' ||
+      v === 'business account' ||
+      v.includes('business')
+    ) return 'business_account'
+
+    return null
+  }
+
+  const paymentBalanceSummary = useMemo(() => {
+    const summary = {
+      cash: { key: 'cash', label: 'Cash', count: 0, total: 0 },
+      business_account: { key: 'business_account', label: 'Business Account', count: 0, total: 0 },
+      card: { key: 'card', label: 'Card', count: 0, total: 0 }
+    }
+
+    data.forEach(row => {
+      const paymentKey = normalizePaymentMethod(row.payment_method || row.payment_method_code)
+      if (!paymentKey || !summary[paymentKey]) return
+
+      summary[paymentKey].count += 1
+      summary[paymentKey].total += Number(row.total_amount || 0)
+    })
+
+    return summary
+  }, [data])
+
+  const summaryCards = [
+    {
+      key: 'transactions',
+      label: 'Transactions',
+      value: totals.total_transactions || 0,
+      color: '#0d6efd',
+      softBg: 'rgba(13, 110, 253, 0.12)',
+      icon: 'bi-receipt'
+    },
+    {
+      key: 'weigh',
+      label: 'Weigh',
+      value: totals.total_weigh || 0,
+      color: '#0dcaf0',
+      softBg: 'rgba(13, 202, 240, 0.12)',
+      icon: 'bi-speedometer2'
+    },
+    {
+      key: 'reweigh',
+      label: 'Reweigh',
+      value: totals.total_reweigh || 0,
+      color: '#6f42c1',
+      softBg: 'rgba(111, 66, 193, 0.12)',
+      icon: 'bi-arrow-repeat'
+    },
+    {
+      key: 'total',
+      label: 'Total',
+      value: formatCurrency(totals.total_amount),
+      color: '#198754',
+      softBg: 'rgba(25, 135, 84, 0.12)',
+      icon: 'bi-currency-dollar'
+    }
+  ]
+
+  const paymentSummaryCards = [
+    {
+      ...paymentBalanceSummary.cash,
+      color: '#198754',
+      softBg: 'rgba(25, 135, 84, 0.12)',
+      icon: 'bi-cash-stack'
+    },
+    {
+      ...paymentBalanceSummary.business_account,
+      color: '#fd7e14',
+      softBg: 'rgba(253, 126, 20, 0.12)',
+      icon: 'bi-briefcase'
+    },
+    {
+      ...paymentBalanceSummary.card,
+      color: '#0d6efd',
+      softBg: 'rgba(13, 110, 253, 0.12)',
+      icon: 'bi-credit-card'
+    }
+  ]
   // const formatDate = (date) => {
   //   if (!date) return '-'
   //   return new Date(date).toLocaleString('en-US', {
@@ -144,9 +240,9 @@ function SalesReport() {
   const pagedData = data.slice(start, end)
 
   return (
-    <div className="container-fluid p-4">
+    <div className="container-fluid px-4 py-3">
       {/* Header */}
-      <div className="d-flex justify-content-between align-items-center mb-4">
+      <div className="d-flex justify-content-between align-items-center mb-3">
         <div>
           <Link to="/reports" className="text-decoration-none text-muted small">
             <i className="bi bi-arrow-left me-1"></i>Back to Reports
@@ -178,11 +274,11 @@ function SalesReport() {
       </div>
 
       {/* Filters */}
-      <div className="card shadow-sm mb-4">
-        <div className="card-header bg-light">
+      <div className="card shadow-sm border-0 mb-4">
+        <div className="card-header bg-light py-2">
           <h6 className="mb-0"><i className="bi bi-funnel me-2"></i>Filters</h6>
         </div>
-        <div className="card-body">
+        <div className="card-body py-3">
           <div className="row g-3 align-items-end">
             <div className="col-md-2">
               <label className="form-label small">Date From</label>
@@ -260,63 +356,110 @@ function SalesReport() {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      {totals && (
-        <div className="row mb-4">
-          <div className="col">
-            <div className="card bg-primary text-white">
-              <div className="card-body py-3 text-center">
-                <h4 className="mb-0">{totals.total_transactions || 0}</h4>
-                <small>Transactions</small>
-              </div>
-            </div>
-          </div>
-          <div className="col">
-            <div className="card bg-info text-white">
-              <div className="card-body py-3 text-center">
-                <h4 className="mb-0">{totals.total_weigh || 0}</h4>
-                <small>Weigh</small>
-              </div>
-            </div>
-          </div>
-          <div className="col">
-            <div className="card text-white" style={{ backgroundColor: '#6f42c1' }}>
-              <div className="card-body py-3 text-center">
-                <h4 className="mb-0">{totals.total_reweigh || 0}</h4>
-                <small>Reweigh</small>
-              </div>
-            </div>
-          </div>
-          {/* <div className="col">
-            <div className="card bg-secondary text-white">
-              <div className="card-body py-3 text-center">
-                <h4 className="mb-0">{formatNumber(totals.total_gross_weight)}</h4>
-                <small>Weight (lb)</small>
-              </div>
-            </div>
-          </div> */}
-          {/* <div className="col">
-            <div className="card bg-warning text-dark">
-              <div className="card-body py-3 text-center">
-                <h5 className="mb-0">{formatCurrency(totals.total_tax)}</h5>
-                <small>Tax</small>
-              </div>
-            </div>
-          </div> */}
-          <div className="col">
-            <div className="card bg-success text-white">
-              <div className="card-body py-3 text-center">
-                <h4 className="mb-0">{formatCurrency(totals.total_amount)}</h4>
-                <small>Total</small>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
+      {/* Summary */}
+      <div className="row g-3 mb-3">
+        {summaryCards.map(card => (
+          <div className="col-12 col-md-6 col-xl-3" key={card.key}>
+            <div
+              className="card shadow-sm border-0 h-100"
+              style={{ borderTop: `4px solid ${card.color}` }}
+            >
+              <div className="card-body py-3">
+                <div className="d-flex justify-content-between align-items-start">
+                  <div>
+                    <div className="text-muted small fw-semibold text-uppercase mb-1">
+                      {card.label}
+                    </div>
+                    <div className="h4 mb-0 fw-bold text-dark">
+                      {card.value}
+                    </div>
+                  </div>
+
+                  <div
+                    className="rounded-circle d-flex align-items-center justify-content-center"
+                    style={{
+                      width: 42,
+                      height: 42,
+                      backgroundColor: card.softBg,
+                      color: card.color
+                    }}
+                  >
+                    <i className={`bi ${card.icon}`}></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Payment Summary */}
+      <div className="d-flex align-items-center mb-2">
+        <div
+          className="rounded-circle d-flex align-items-center justify-content-center me-2"
+          style={{
+            width: 34,
+            height: 34,
+            backgroundColor: '#f1f3f5',
+            color: '#495057'
+          }}
+        >
+          <i className="bi bi-wallet2"></i>
+        </div>
+        <div>
+          <h6 className="mb-0">Balance Summary by Payment Method</h6>
+        </div>
+      </div>
+
+      <div className="row g-3 mb-4">
+        {paymentSummaryCards.map(item => (
+          <div className="col-12 col-md-6 col-xl-4" key={item.key}>
+            <div
+              className="card shadow-sm border-0 h-100"
+              style={{ borderTop: `4px solid ${item.color}` }}
+            >
+              <div className="card-body py-3">
+                <div className="d-flex justify-content-between align-items-start mb-2">
+                  <div className="d-flex align-items-center">
+                    <div
+                      className="rounded-circle d-flex align-items-center justify-content-center me-2"
+                      style={{
+                        width: 38,
+                        height: 38,
+                        backgroundColor: item.softBg,
+                        color: item.color
+                      }}
+                    >
+                      <i className={`bi ${item.icon}`}></i>
+                    </div>
+
+                    <div>
+                      <div className="fw-semibold text-dark">{item.label}</div>
+                      <div className="small text-muted">Total Amount</div>
+                    </div>
+                  </div>
+
+                  <span className="badge rounded-pill bg-light text-dark border">
+                    {item.count}
+                  </span>
+                </div>
+
+                <div className="d-flex justify-content-between align-items-end">
+                  <span className="text-muted small">Transactions</span>
+                  <span className="h5 mb-0 fw-bold" style={{ color: item.color }}>
+                    {formatCurrency(item.total)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
       {/* Data Preview */}
-      <div className="card shadow-sm">
-        <div className="card-header bg-light d-flex justify-content-between align-items-center">
+      <div className="card shadow-sm border-0">
+
+        <div className="card-header bg-light py-2 d-flex justify-content-between align-items-center">
           <h6 className="mb-0"><i className="bi bi-table me-2"></i>Preview</h6>
           <span className="badge bg-secondary">{data.length} records</span>
         </div>

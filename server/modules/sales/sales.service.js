@@ -8,10 +8,12 @@ export const getAll = async (filters = {}) => {
     SELECT s.sale_id, s.sale_uid, s.receipt_number, s.sale_status_id, s.subtotal, s.discount_total,
            s.tax_total, s.total, s.amount_paid, s.balance_due, s.currency, s.is_reweigh,
            s.occurred_at, s.created_at, s.reweigh_of_sale_id,
+           t.ticket_number,
            st.code as status_code, st.label as status_label,
            u.full_name as operator_name,
            d.account_name, d.driver_first_name, d.driver_last_name, d.vehicle_plates
     FROM sales s
+    LEFT JOIN tickets t ON s.sale_uid = t.sale_uid
     LEFT JOIN status_catalogo st ON s.sale_status_id = st.status_id
     LEFT JOIN users u ON s.operator_id = u.user_id
     LEFT JOIN sale_driver_info d ON s.sale_uid = d.sale_uid
@@ -86,6 +88,9 @@ export const getById = async (id) => {
     WHERE t.sale_uid = ?
   `, [sale.sale_uid])
   sale.tickets = tickets
+
+  // Exponer ticket_number al nivel raíz para acceso directo
+  sale.ticket_number = (tickets.length > 0) ? tickets[0].ticket_number : null
 
   // If reweigh, get original sale info
   if (sale.reweigh_of_sale_id) {

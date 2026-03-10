@@ -40,6 +40,9 @@ import AccountsReceivable from './pages/ar/AccountsReceivable'
 import PaymentHistory from './pages/ar/PaymentHistory'
 import PaymentDetail from './pages/ar/PaymentDetail'
 import AllPaymentsHistory from './pages/ar/AllPaymentsHistory'
+import MissedTransactions from './pages/reports/MissedTransactions'
+
+
 function App() {
   return (
     <AuthProvider>
@@ -107,6 +110,7 @@ function App() {
           <Route path="/reports/sales" element={<SalesReport />} />
           <Route path="/reports/customer-statement" element={<CustomerStatement />} />
           <Route path="/reports/cash-sales" element={<CashSales />} />
+          <Route path="/reports/missed-transactions" element={<MissedTransactions />} />
 
           <Route path="/settings/pos" element={<PosSettings />} />
 

@@ -38,16 +38,25 @@ function ReportsIndex() {
       path: '/reports/cash-sales',
       category: 'Sales'
     },
-    // Coming soon...
+    // // Coming soon...
+    // {
+    //   id: 'coming-soon-1',
+    //   title: 'Driver Activity',
+    //   description: 'Driver transactions and activity log',
+    //   icon: 'bi-truck',
+    //   color: 'secondary',
+    //   path: null,
+    //   category: 'Operations',
+    //   comingSoon: true
+    // }
     {
-      id: 'coming-soon-1',
-      title: 'Driver Activity',
-      description: 'Driver transactions and activity log',
-      icon: 'bi-truck',
-      color: 'secondary',
-      path: null,
-      category: 'Operations',
-      comingSoon: true
+      id: 'missed-transactions',
+      title: 'Missed Transactions',
+      description: 'Scale captures analysis — used vs missed',
+      icon: 'bi-exclamation-triangle',
+      color: 'info',
+      path: '/reports/missed-transactions',
+      category: 'Operations'
     }
   ]
 

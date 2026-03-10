@@ -248,14 +248,14 @@ function SalesReport() {
               </div>
             </div>
           </div>
-          <div className="col">
+          {/* <div className="col">
             <div className="card text-center">
               <div className="card-body py-2">
                 <h4 className="mb-0 text-dark">{formatNumber(totals.total_gross_weight)} lb</h4>
                 <small className="text-muted">Total Weight</small>
               </div>
             </div>
-          </div>
+          </div> */}
           <div className="col">
             <div className="card text-center">
               <div className="card-body py-2">

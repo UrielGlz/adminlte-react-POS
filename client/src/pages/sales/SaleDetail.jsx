@@ -112,7 +112,7 @@ function SaleDetail() {
         <div>
           <h3 className="mb-1">
             <i className="bi bi-receipt me-2"></i>
-            Sale #{sale.sale_id}
+            Ticket #{sale.ticket_number || sale.tickets?.[0]?.ticket_number || sale.sale_id}
             {sale.is_reweigh === 1 && <span className="badge bg-info ms-2">Re-weigh</span>}
           </h3>
           <p className="text-muted mb-0">{formatDate(sale.created_at)}</p>

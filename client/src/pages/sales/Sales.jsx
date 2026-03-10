@@ -69,13 +69,15 @@ function Sales() {
     const colors = { 'OPEN': 'warning', 'COMPLETED': 'success', 'CANCELLED': 'danger', 'REFUNDED': 'info' }
     return colors[code] || 'secondary'
   }
-  const downloadTicketPdf = async (saleId) => {
+
+  // FIX: El endpoint sigue usando sale_id (interno), pero el archivo descargado usa ticket_number (visible)
+  const downloadTicketPdf = async (saleId, ticketNumber) => {
     try {
       const res = await api.get(`/sales/${saleId}/ticket.pdf`, { responseType: 'blob' })
       const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
       const a = document.createElement('a')
       a.href = url
-      a.download = `ticket-${saleId}.pdf`
+      a.download = `ticket-${ticketNumber || saleId}.pdf`
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -186,7 +188,7 @@ function Sales() {
               <table className="table table-hover mb-0 table-sm">
                 <thead className="table-light">
                   <tr>
-                    <th>ID</th>
+                    <th>Ticket #</th>
                     <th>Date/Time</th>
                     <th>Customer</th>
                     <th>Driver</th>
@@ -203,7 +205,7 @@ function Sales() {
                     <tr><td colSpan="10" className="text-center py-4 text-muted">No transactions found</td></tr>
                   ) : pagedItems.map(item => (
                     <tr key={item.sale_id} className={item.status_code === 'CANCELLED' ? 'table-secondary' : ''}>
-                      <td><small className="text-muted">#{item.sale_id}</small></td>
+                      <td><code className="small">#{item.ticket_number || item.sale_id}</code></td>
                       <td><small>{formatDate(item.created_at)}</small></td>
                       <td><small>{item.account_name || '-'}</small></td>
                       <td><small>{[item.driver_first_name, item.driver_last_name].filter(Boolean).join(' ') || '-'}</small></td>
@@ -223,7 +225,7 @@ function Sales() {
                         <button
                           className="btn btn-sm btn-outline-danger"
                           title="PDF"
-                          onClick={() => downloadTicketPdf(item.sale_id)}
+                          onClick={() => downloadTicketPdf(item.sale_id, item.ticket_number)}
                         >
                           <i className="bi bi-file-earmark-pdf"></i>
                         </button>

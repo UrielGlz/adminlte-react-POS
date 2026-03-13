@@ -278,42 +278,25 @@ function AllPaymentsHistory() {
       </div>
 
       {/* Results Table */}
-      <div className="card">
-        <div className="card-header d-flex justify-content-between align-items-center">
-          <span>
-            <i className="bi bi-list me-2"></i>
-            Payment Records
-            {pagination.total > 0 && (
-              <span className="text-muted ms-2">
-                (Showing {((pagination.page - 1) * pagination.limit) + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total})
-              </span>
-            )}
-          </span>
-          <div className="d-flex align-items-center gap-2">
-            <label className="mb-0 text-muted small">Rows:</label>
-            <select
-              className="form-select form-select-sm"
-              style={{ width: 'auto' }}
-              value={pagination.limit}
-              onChange={handlePageSizeChange}
-            >
-              {pageSizeOptions.map(size => (
-                <option key={size} value={size}>{size}</option>
-              ))}
-            </select>
-          </div>
+      <div className="card shadow-sm">
+        <div className="card-header bg-white d-flex justify-content-between align-items-center">
+          <span><i className="bi bi-list me-2"></i>Payment Records</span>
+          <span className="badge bg-secondary">{pagination.total} records</span>
         </div>
-
-        {loading ? (
-          <div className="card-body text-center py-5">
-            <div className="spinner-border text-primary"></div>
-            <p className="mt-2 text-muted">Loading...</p>
-          </div>
-        ) : history.length > 0 ? (
-          <>
+        <div className="card-body p-0">
+          {loading ? (
+            <div className="text-center py-5">
+              <div className="spinner-border text-primary"></div>
+              <p className="mt-2 text-muted">Loading...</p>
+            </div>
+          ) : history.length === 0 ? (
+            <div className="text-center py-5 text-muted">
+              <i className="bi bi-inbox fs-1 d-block mb-2"></i>
+              No records found
+            </div>
+          ) : (
             <div className="table-responsive">
               <table className="table table-hover table-sm mb-0 align-middle">
-
                 <thead className="table-light">
                   <tr>
                     <th>ID</th>
@@ -344,7 +327,6 @@ function AllPaymentsHistory() {
                       <td>{h.payment_method}</td>
                       <td>{h.reference_number || '-'}</td>
                       <td className="text-end font-monospace">{formatCurrency(h.amount_received)}</td>
-
                       <td className="text-end text-success font-monospace">{formatCurrency(h.amount_applied)}</td>
                       <td className="text-end">
                         {parseFloat(h.amount_unapplied) > 0
@@ -379,80 +361,32 @@ function AllPaymentsHistory() {
                 </tbody>
               </table>
             </div>
-
-            {/* Pagination */}
-            {pagination.totalPages > 1 && (
-              <div className="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
-                <div className="text-muted small">
-                  Showing {firstRow}-{lastRow} of {pagination.total}
-                </div>
-
-                <div className="d-flex align-items-center gap-2">
-                  <div className="text-muted small">Page</div>
-
-                  <button
-                    className="btn btn-sm btn-outline-secondary"
-                    disabled={pagination.page === 1}
-                    onClick={() => handlePageChange(1)}
-                  >
-                    «
-                  </button>
-
-                  <button
-                    className="btn btn-sm btn-outline-secondary"
-                    disabled={pagination.page === 1}
-                    onClick={() => handlePageChange(pagination.page - 1)}
-                  >
-                    ‹
-                  </button>
-
-                  <span className="small">
-                    {pagination.page} <span className="text-muted">of</span> {pagination.totalPages}
-                  </span>
-
-                  <button
-                    className="btn btn-sm btn-outline-secondary"
-                    disabled={pagination.page === pagination.totalPages}
-                    onClick={() => handlePageChange(pagination.page + 1)}
-                  >
-                    ›
-                  </button>
-
-                  <button
-                    className="btn btn-sm btn-outline-secondary"
-                    disabled={pagination.page === pagination.totalPages}
-                    onClick={() => handlePageChange(pagination.totalPages)}
-                  >
-                    »
-                  </button>
-
-                  <div className="vr mx-1" />
-
-                  <label className="text-muted small mb-0">Go to</label>
-                  <input
-                    type="number"
-                    className="form-control form-control-sm"
-                    style={{ width: 80 }}
-                    min={1}
-                    max={pagination.totalPages}
-                    defaultValue={pagination.page}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        const val = Number(e.currentTarget.value)
-                        if (!Number.isNaN(val)) handlePageChange(val)
-                      }
-                    }}
-                  />
-                </div>
+          )}
+        </div>
+        {pagination.total > 0 && (
+          <div className="d-flex flex-wrap justify-content-between align-items-center p-3 gap-2">
+            <small className="text-muted">
+              Showing <b>{firstRow}</b>–<b>{lastRow}</b> of <b>{pagination.total}</b>
+            </small>
+            <div className="d-flex align-items-center gap-2">
+              <select
+                className="form-select form-select-sm"
+                style={{ width: 110 }}
+                value={pagination.limit}
+                onChange={handlePageSizeChange}
+              >
+                {pageSizeOptions.map(size => (
+                  <option key={size} value={size}>{size}</option>
+                ))}
+              </select>
+              <div className="btn-group">
+                <button className="btn btn-outline-secondary btn-sm" disabled={pagination.page === 1} onClick={() => handlePageChange(1)}>«</button>
+                <button className="btn btn-outline-secondary btn-sm" disabled={pagination.page === 1} onClick={() => handlePageChange(pagination.page - 1)}>‹</button>
+                <button className="btn btn-outline-secondary btn-sm" disabled>{pagination.page} / {pagination.totalPages}</button>
+                <button className="btn btn-outline-secondary btn-sm" disabled={pagination.page === pagination.totalPages} onClick={() => handlePageChange(pagination.page + 1)}>›</button>
+                <button className="btn btn-outline-secondary btn-sm" disabled={pagination.page === pagination.totalPages} onClick={() => handlePageChange(pagination.totalPages)}>»</button>
               </div>
-            )}
-
-          </>
-        ) : (
-          <div className="card-body text-center py-5">
-            <i className="bi bi-inbox display-1 text-muted"></i>
-            <h4 className="mt-3 text-muted">No Records Found</h4>
-            <p className="text-muted">Try adjusting your filters or search criteria.</p>
+            </div>
           </div>
         )}
       </div>

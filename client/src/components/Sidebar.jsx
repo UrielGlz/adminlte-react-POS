@@ -159,7 +159,8 @@ function Sidebar() {
           <img
             src={`${import.meta.env.BASE_URL}img/logo_MFTZ.png`}
             alt="Logo"
-            className="brand-image opacity-75 shadow"
+            className="brand-image shadow"
+            style={{ backgroundColor: '#fff', borderRadius: '6px', padding: '2px' }}
           />
 
           {/* <span className="brand-text fw-light">AdminLTE React</span> */}

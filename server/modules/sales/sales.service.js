@@ -6,7 +6,8 @@ export const getAll = async (filters = {}) => {
 
   let sql = `
     SELECT s.sale_id, s.sale_uid, s.receipt_number, s.sale_status_id, s.subtotal, s.discount_total,
-           s.tax_total, s.total, s.amount_paid, s.balance_due, s.currency, s.is_reweigh,
+           s.tax_total, s.total, s.amount_paid, s.balance_due, s.currency,
+           CASE WHEN s.reweigh_of_sale_id IS NOT NULL THEN 1 ELSE 0 END as is_reweigh,
            s.occurred_at, s.created_at, s.reweigh_of_sale_id,
            t.ticket_number,
            st.code as status_code, st.label as status_label,
@@ -34,8 +35,11 @@ export const getAll = async (filters = {}) => {
     params.push(status_id)
   }
   if (is_reweigh !== undefined) {
-    sql += ` AND s.is_reweigh = ?`
-    params.push(is_reweigh ? 1 : 0)
+    if (String(is_reweigh) === '1') {
+      sql += ` AND s.reweigh_of_sale_id IS NOT NULL`
+    } else {
+      sql += ` AND s.reweigh_of_sale_id IS NULL`
+    }
   }
 
   sql += ` ORDER BY s.created_at DESC LIMIT 500`

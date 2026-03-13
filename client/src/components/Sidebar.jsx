@@ -188,22 +188,8 @@ function Sidebar() {
             )}
           </ul>
         </nav>
-      </div>
 
-      {/* User Panel (opcional) */}
-      {user && (
-        <div className="sidebar-footer p-3 border-top">
-          <div className="d-flex align-items-center">
-            <div className="flex-shrink-0">
-              <i className="bi bi-person-circle fs-4"></i>
-            </div>
-            <div className="flex-grow-1 ms-2 text-truncate">
-              <small className="d-block text-muted">{user.role}</small>
-              <span>{user.fullName}</span>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
     </aside>
   )
 }

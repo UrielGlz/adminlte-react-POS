@@ -51,7 +51,7 @@ function Header() {
           </li>
 
           {/* Notifications */}
-          <li className="nav-item dropdown">
+          {/* <li className="nav-item dropdown">
             <a className="nav-link" data-bs-toggle="dropdown" href="#">
               <i className="bi bi-bell-fill"></i>
               <span className="navbar-badge badge text-bg-warning">15</span>
@@ -73,7 +73,7 @@ function Header() {
                 View all notifications
               </a>
             </div>
-          </li>
+          </li> */}
 
           {/* User Menu */}
           <li className="nav-item dropdown user-menu">

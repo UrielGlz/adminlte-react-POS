@@ -10,6 +10,8 @@ function SalesReport() {
   const [filterOptions, setFilterOptions] = useState({})
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState({ pdf: false, excel: false })
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
 
   // Filtros - default: últimos 7 días
   const today = new Date().toISOString().split('T')[0]
@@ -61,7 +63,15 @@ function SalesReport() {
     setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }))
   }
 
-  const applyFilters = () => fetchData()
+  const applyFilters = () => { setPage(1); fetchData() }
+
+  // Pagination
+  const totalRows = data.length
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))
+  const safePage = Math.min(Math.max(page, 1), totalPages)
+  const start = (safePage - 1) * pageSize
+  const end = start + pageSize
+  const pagedData = data.slice(start, end)
 
   const exportFile = async (type) => {
     try {
@@ -267,40 +277,79 @@ function SalesReport() {
         </div>
       )}
 
-      {/* Payment Summary */}
-      {Object.keys(paymentSummary).length > 0 && (
-        <div className="card mb-4">
-          <div className="card-header bg-white">
-            <i className="bi bi-wallet2 me-2"></i>Balance Summary by Payment Method
-          </div>
-          <div className="card-body p-0">
-            <table className="table table-sm mb-0">
-              <thead className="table-light">
-                <tr>
-                  <th>Method</th>
-                  <th className="text-end">Qty</th>
-                  <th className="text-end">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.values(paymentSummary).map(item => (
-                  <tr key={item.key}>
-                    <td>{item.label}</td>
-                    <td className="text-end">{item.count}</td>
-                    <td className="text-end">{formatCurrency(item.total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* Balance Summary by Payment Method */}
+      {Object.keys(paymentSummary).length > 0 && (() => {
+        const paymentSummaryCards = [
+          {
+            ...(paymentSummary.cash || { key: 'cash', label: 'Cash', count: 0, total: 0 }),
+            color: '#198754',
+            softBg: 'rgba(25, 135, 84, 0.12)',
+            icon: 'bi-cash-stack'
+          },
+          {
+            ...(paymentSummary.business_account || { key: 'business_account', label: 'Business Account', count: 0, total: 0 }),
+            color: '#fd7e14',
+            softBg: 'rgba(253, 126, 20, 0.12)',
+            icon: 'bi-briefcase'
+          },
+          {
+            ...(paymentSummary.card || { key: 'card', label: 'Card', count: 0, total: 0 }),
+            color: '#0d6efd',
+            softBg: 'rgba(13, 110, 253, 0.12)',
+            icon: 'bi-credit-card'
+          }
+        ]
+        return (
+          <>
+            <div className="d-flex align-items-center mb-2">
+              <div
+                className="rounded-circle d-flex align-items-center justify-content-center me-2"
+                style={{ width: 34, height: 34, backgroundColor: '#f1f3f5', color: '#495057' }}
+              >
+                <i className="bi bi-wallet2"></i>
+              </div>
+              <h6 className="mb-0">Balance Summary by Payment Method</h6>
+            </div>
+            <div className="row g-3 mb-4">
+              {paymentSummaryCards.map(item => (
+                <div className="col-12 col-md-6 col-xl-4" key={item.key}>
+                  <div className="card shadow-sm border-0 h-100" style={{ borderTop: `4px solid ${item.color}` }}>
+                    <div className="card-body py-3">
+                      <div className="d-flex justify-content-between align-items-start mb-2">
+                        <div className="d-flex align-items-center">
+                          <div
+                            className="rounded-circle d-flex align-items-center justify-content-center me-2"
+                            style={{ width: 38, height: 38, backgroundColor: item.softBg, color: item.color }}
+                          >
+                            <i className={`bi ${item.icon}`}></i>
+                          </div>
+                          <div>
+                            <div className="fw-semibold text-dark">{item.label}</div>
+                            <div className="small text-muted">Total Amount</div>
+                          </div>
+                        </div>
+                        <span className="badge rounded-pill bg-light text-dark border">{item.count}</span>
+                      </div>
+                      <div className="d-flex justify-content-between align-items-end">
+                        <span className="text-muted small">Transactions</span>
+                        <span className="h5 mb-0 fw-bold" style={{ color: item.color }}>
+                          {formatCurrency(item.total)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )
+      })()}
 
       {/* Table */}
       <div className="card">
         <div className="card-header bg-white d-flex justify-content-between align-items-center">
           <span><i className="bi bi-table me-2"></i>Transactions</span>
-          <span className="badge bg-secondary">{data.length} records</span>
+          <span className="badge bg-secondary">{totalRows} records</span>
         </div>
         <div className="card-body p-0">
           {loading ? (
@@ -336,8 +385,9 @@ function SalesReport() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.map((row, index) => {
+                  {pagedData.map((row, index) => {
                     const driverName = [row.driver_first_name, row.driver_last_name].filter(Boolean).join(' ') || '-'
+                    const statusClass = (row.status_code || '').toUpperCase() === 'VOID' ? 'bg-danger' : 'bg-success'
                     return (
                       <tr key={`${row.ticket_number}-${index}`}>
                         <td><code>{row.ticket_number}</code></td>
@@ -362,7 +412,7 @@ function SalesReport() {
                         <td className="text-end">{formatCurrency(row.tax_amount)}</td>
                         <td className="text-end fw-bold">{formatCurrency(row.total_amount)}</td>
                         <td className="text-center">
-                          <span className="badge bg-success">{row.status_label || row.status_code || '-'}</span>
+                          <span className={`badge ${statusClass}`}>{row.status_label || row.status_code || '-'}</span>
                         </td>
                       </tr>
                     )
@@ -372,6 +422,33 @@ function SalesReport() {
             </div>
           )}
         </div>
+        {totalRows > 0 && (
+          <div className="d-flex flex-wrap justify-content-between align-items-center p-3 gap-2">
+            <small className="text-muted">
+              Showing <b>{totalRows === 0 ? 0 : start + 1}</b>–<b>{Math.min(end, totalRows)}</b> of <b>{totalRows}</b>
+            </small>
+            <div className="d-flex align-items-center gap-2">
+              <select
+                className="form-select form-select-sm"
+                style={{ width: 110 }}
+                value={pageSize}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }}
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <div className="btn-group">
+                <button className="btn btn-outline-secondary btn-sm" disabled={safePage === 1} onClick={() => setPage(1)}>«</button>
+                <button className="btn btn-outline-secondary btn-sm" disabled={safePage === 1} onClick={() => setPage(safePage - 1)}>‹</button>
+                <button className="btn btn-outline-secondary btn-sm" disabled>{safePage} / {totalPages}</button>
+                <button className="btn btn-outline-secondary btn-sm" disabled={safePage === totalPages} onClick={() => setPage(safePage + 1)}>›</button>
+                <button className="btn btn-outline-secondary btn-sm" disabled={safePage === totalPages} onClick={() => setPage(totalPages)}>»</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

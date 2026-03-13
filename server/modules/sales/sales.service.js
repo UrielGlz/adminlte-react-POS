@@ -57,7 +57,12 @@ export const getById = async (id) => {
   const sale = sales[0]
 
   // Get driver info
-  const driverInfo = await query('SELECT * FROM sale_driver_info WHERE sale_uid = ?', [sale.sale_uid])
+  const driverInfo = await query(`
+    SELECT sdi.*, dp.name as product_description
+    FROM sale_driver_info sdi
+    LEFT JOIN driver_products dp ON sdi.driver_product_id = dp.product_id
+    WHERE sdi.sale_uid = ?
+  `, [sale.sale_uid])
   sale.driver_info = driverInfo[0] || null
 
   // Get lines

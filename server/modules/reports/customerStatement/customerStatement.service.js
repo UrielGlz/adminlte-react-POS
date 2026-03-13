@@ -182,7 +182,7 @@ export const getCustomerTransactions = async (customerId, dateFrom, dateTo) => {
       sdi.driver_last_name,
       sdi.vehicle_plates,
       sdi.license_state,
-      p.name as driver_product,
+      dp.name as driver_product,
       sdi.trailer_number,
       sdi.tractor_number,
       u.full_name AS operator_name,
@@ -190,7 +190,9 @@ export const getCustomerTransactions = async (customerId, dateFrom, dateTo) => {
       ssa.eje2,
       ssa.eje3,
       ssa.peso_total,
-      ssa.weight_lb as gross_weight
+      ssa.weight_lb as gross_weight,
+      s.is_reweigh,
+      s.reweigh_of_sale_id
     FROM tickets t
     JOIN sales s ON t.sale_uid = s.sale_uid
     JOIN sale_driver_info sdi ON s.sale_uid = sdi.sale_uid
@@ -198,6 +200,7 @@ export const getCustomerTransactions = async (customerId, dateFrom, dateTo) => {
     JOIN sale_lines sl ON s.sale_uid = sl.sale_uid
     JOIN products p ON sl.product_id = p.product_id
     LEFT JOIN scale_session_axles ssa ON sdi.match_key = ssa.uuid_weight
+    LEFT JOIN driver_products dp ON sdi.driver_product_id = dp.product_id
     LEFT JOIN payments pay ON s.sale_uid = pay.sale_uid
     LEFT JOIN payment_methods pm ON pay.method_id = pm.method_id
     LEFT JOIN status_catalogo pay_st ON pay.payment_status_id = pay_st.status_id AND pay_st.module = 'PAYMENTS'
@@ -333,7 +336,27 @@ export const hydrateTicketsForPrint = async (tickets = [], opts = {}) => {
     }
   }
 
-  // 2) Return enriched tickets
+  // 2) Fetch original ticket numbers for reweigh sales
+  // NOTE: reweigh_of_sale_id stores a sale_uid (UUID), not a numeric sale_id
+  const reweighSaleUids = [...new Set((tickets || [])
+    .filter(t => t.reweigh_of_sale_id)
+    .map(t => t.reweigh_of_sale_id))]
+  const originalTicketMap = new Map()
+  if (reweighSaleUids.length > 0) {
+    const ph = reweighSaleUids.map(() => '?').join(',')
+    const rows = await query(
+      `SELECT s.sale_uid, t.ticket_number
+       FROM sales s
+       JOIN tickets t ON s.sale_uid = t.sale_uid
+       WHERE s.sale_uid IN (${ph})`,
+      reweighSaleUids
+    )
+    for (const r of rows) {
+      originalTicketMap.set(r.sale_uid, r.ticket_number)
+    }
+  }
+
+  // 3) Return enriched tickets
   return await Promise.all((tickets || []).map(async (t) => {
     // QR (si se pide)
     let qrPng = t.qrPng || null
@@ -351,9 +374,15 @@ export const hydrateTicketsForPrint = async (tickets = [], opts = {}) => {
       })
     }
 
+    // Original ticket number for reweigh
+    const original_ticket_number = t.reweigh_of_sale_id
+      ? (originalTicketMap.get(t.reweigh_of_sale_id) || null)
+      : null
+
     return {
       ...t,
       qrPng,
+      original_ticket_number,
       signaturePng: withSignature ? (sigMap.get(t.ticket_uid) || null) : (t.signaturePng || null),
       weigh_fee_text: t.weigh_fee_text || formatCurrency(t.weigh_fee ?? t.total_amount ?? 0)
     }
@@ -976,9 +1005,9 @@ export function drawTicket612x396(doc, t, logoPath) {
 
   const rightColX = RIGHT_X
 
-  // ========== LOGO (top left) ==========
-  const logoW = 70
-  const logoH = 50
+  // ========== LOGO (top left — bigger) ==========
+  const logoW = 110
+  const logoH = 65
   const logoX = contentX
   const logoY = contentY
 
@@ -990,29 +1019,29 @@ export function drawTicket612x396(doc, t, logoPath) {
     }
   }
 
-  // ========== HEADER CENTER ==========
-  const headerCenterX = contentX + 95
-  let headerY = contentY + 5
+  // ========== HEADER CENTER (centered between logo and QR) ==========
+  const headerCenterX = contentX + logoW + 10
+  const headerTextW = RIGHT_X - headerCenterX - 10
+  let headerY = contentY + 2
 
-  doc.font('Helvetica-Bold').fontSize(14).fillColor('#000000')
-  doc.text('McAllen Foreign Trade Zone', headerCenterX, headerY, { width: 280, align: 'center' })
-  headerY += 18
-
-  doc.fontSize(12)
-  doc.text('Certified Public Truck Scale', headerCenterX, headerY, { width: 280, align: 'center' })
+  doc.font('Helvetica-Bold').fontSize(13).fillColor('#000000')
+  doc.text('Certified Public Truck Scale', headerCenterX, headerY, { width: headerTextW, align: 'center' })
   headerY += 16
 
-  doc.font('Helvetica').fontSize(9)
-  doc.text('6401 S. 33rd Street · McAllen, Texas 78503', headerCenterX, headerY, { width: 280, align: 'center' })
-  headerY += 12
+  doc.font('Helvetica').fontSize(8.5)
+  doc.text('6401 S. 33rd Street · McAllen, Texas 78503', headerCenterX, headerY, { width: headerTextW, align: 'center' })
+  headerY += 11
 
-  doc.text('(956) 682-4306 · (956) 882-9111 Fax', headerCenterX, headerY, { width: 280, align: 'center' })
-  headerY += 12
+  doc.text('(956) 682-4306 · (956) 882-9111 Fax', headerCenterX, headerY, { width: headerTextW, align: 'center' })
+  headerY += 11
 
-  doc.text('Certificate No. 036231', headerCenterX, headerY, { width: 280, align: 'center' })
-  headerY += 12
+  doc.text('Certificate No. 036231', headerCenterX, headerY, { width: headerTextW, align: 'center' })
+  headerY += 11
 
-  doc.text('Website: http://www.mftz.org    Email: fizinfo@mftz.org', headerCenterX, headerY, { width: 320, align: 'center' })
+  doc.text('Website: http://www.mftz.org', headerCenterX, headerY, { width: headerTextW, align: 'center' })
+  headerY += 11
+
+  doc.text('Email: fizinfo@mftz.org', headerCenterX, headerY, { width: headerTextW, align: 'center' })
 
   // ========== TICKET NUMBER (top right) ==========
   const ticketX = W - MARGIN - 135
@@ -1192,10 +1221,10 @@ export function drawTicket612x396(doc, t, logoPath) {
   const productBottom = prodY + 14 + fieldH
 
   const presets = [
-    { scaleRowH: 18, gap: 10, formH: 54 },
-    { scaleRowH: 16, gap: 8, formH: 52 },
-    { scaleRowH: 14, gap: 8, formH: 50 },
-    { scaleRowH: 14, gap: 6, formH: 46 }
+    { scaleRowH: 18, gap: 10, formH: 66 },
+    { scaleRowH: 16, gap: 8, formH: 62 },
+    { scaleRowH: 14, gap: 8, formH: 58 },
+    { scaleRowH: 14, gap: 6, formH: 54 }
   ]
 
   const feeW = 95
@@ -1288,14 +1317,31 @@ export function drawTicket612x396(doc, t, logoPath) {
   doc.restore()
 
   doc.font('Helvetica-Bold').fontSize(9).fillColor('#000000')
-  doc.text('Reweigh Form', formX + 10, layout.formY + 8)
+  doc.text('Reweigh Form', formX + 10, layout.formY + 6)
 
-  doc.font('Helvetica').fontSize(8.5).fillColor('#000000')
-  doc.text('Date and Time:', formX + 10, layout.formY + 24)
+  doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#000000')
+  doc.text('Ticket No:', formX + 10, layout.formY + 19)
+  doc.font('Helvetica').text(t.original_ticket_number ? String(t.original_ticket_number) : '', formX + 70, layout.formY + 19)
 
-  const initialsY = layout.formY + (layout.formH - 18)
+  doc.text('Date and Time:', formX + 10, layout.formY + 32)
+
+  const initialsY = layout.formY + (layout.formH - 16)
   doc.text('Initials:', formX + 10, initialsY)
   doc.text('____________________', formX + 70, initialsY)
+
+  // ========== TEXAS SEAL (bottom-left) ==========
+  const sealPath = path.join(__dirname, '../../../assets/images/TexasSeal.png')
+  const sealSize = 65
+  const sealX = contentX + 5
+  const sealY = H - MARGIN - sealSize - 10
+
+  try {
+    if (fs.existsSync(sealPath)) {
+      doc.image(sealPath, sealX, sealY, { fit: [sealSize, sealSize] })
+    }
+  } catch (e) {
+    // ignore
+  }
 }
 
 

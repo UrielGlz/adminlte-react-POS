@@ -156,6 +156,10 @@ async function buildTicketObjectFromSale(sale) {
     weigh_fee_text: formatCurrency(sale.total || 0),
     sale_uid: sale.sale_uid,
     ticket_uid,
+
+    // reweigh info
+    is_reweigh: sale.is_reweigh || 0,
+    reweigh_of_sale_id: sale.reweigh_of_sale_id || null,
   }
 }
 

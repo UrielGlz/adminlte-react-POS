@@ -268,7 +268,6 @@ export const generatePdf = async (filters = {}) => {
       const rowHeight = 14
 
       const headerAreaHeight = 85
-      const footerHeight = 40   // margen inferior reservado para el footer en páginas normales
 
       // =====================================================================
       // FIX: Calcular dimensiones del summary ANTES del render loop
@@ -289,12 +288,6 @@ export const generatePdf = async (filters = {}) => {
       const summaryBlockHeight = summaryHeaderHeight + summaryBodyHeight
 
       const gapBetweenBlocks = 8
-      const bottomGapFromFooter = 8
-
-      // Altura total que necesita el bloque summary+payment anclado al fondo
-      const totalSummaryHeight = bottomGapFromFooter + paymentTableHeight + gapBetweenBlocks + summaryBlockHeight
-      // Y donde comienza el área reservada para el summary (desde aquí hacia abajo no puede haber filas)
-      const summaryAreaTop = footerY - totalSummaryHeight
 
       // =====================================================================
       // FIX: Se eliminó completamente el bloque de predicción de totalPages:
@@ -367,28 +360,19 @@ export const generatePdf = async (filters = {}) => {
 
       while (rowIndex < data.length) {
         // ---------------------------------------------------------------
-        // FIX CENTRAL: Determinar dinámicamente si esta página es "la última"
-        // Pregunta: ¿caben TODOS los registros restantes + el bloque summary
-        //           entre yPos actual y el fondo de la página?
+        // Paginación simple: si la fila no cabe, saltar página.
+        // El summary se dibuja DESPUÉS de la tabla (fluye, no se ancla al fondo),
+        // así que no necesitamos reservar espacio inferior durante el loop.
         // ---------------------------------------------------------------
-        const remainingRows = data.length - rowIndex
-        const yAfterAllRemaining = yPos + (remainingRows * rowHeight)
-        const fitsWithSummary = yAfterAllRemaining <= summaryAreaTop
-
-        // Si todo cabe → reservar espacio para summary (summaryAreaTop es el límite)
-        // Si no cabe   → llenar hasta footerY con margen mínimo, luego nueva página
-        const pageLimit = fitsWithSummary ? summaryAreaTop : (footerY - 5)
-
-        if (yPos + rowHeight > pageLimit) {
-          // Dibujar borde de la tabla de ESTA página antes de cambiar
+        if (yPos + rowHeight > footerY - 5) {
           doc.rect(tableLeft, tableStartYOnPage, tableWidth, yPos - tableStartYOnPage)
             .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
 
           doc.addPage()
           drawHeader()
           yPos = drawTableHeader(headerAreaHeight)
-          tableStartYOnPage = headerAreaHeight  // resetear para la nueva página
-          continue  // re-evaluar con el nuevo yPos
+          tableStartYOnPage = headerAreaHeight
+          continue
         }
 
         // Fila alternada (sin cambios)
@@ -443,11 +427,25 @@ export const generatePdf = async (filters = {}) => {
       doc.rect(tableLeft, tableStartYOnPage, tableWidth, yPos - tableStartYOnPage)
         .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
 
-      // ========== SUMMARY (posiciones ancladas al fondo, sin cambios en el dibujo) ==========
-      const paymentTableTop = footerY - bottomGapFromFooter - paymentTableHeight
-      const summaryTop = paymentTableTop - gapBetweenBlocks - summaryBlockHeight
+      // =====================================================================
+      // SUMMARY: posicionado justo después de la tabla, no anclado al fondo.
+      // Si no cabe en la página actual, salta a página nueva.
+      // =====================================================================
+      const gapAfterTable = 12
+      const totalSummaryNeeded = summaryBlockHeight + gapBetweenBlocks + paymentTableHeight
+
+      let summaryStartY = yPos + gapAfterTable
+
+      // ¿Cabe todo el bloque summary+payment en esta página?
+      if (summaryStartY + totalSummaryNeeded > footerY) {
+        doc.addPage()
+        drawHeader()
+        summaryStartY = headerAreaHeight + 10
+      }
 
       // SUMMARY GENERAL
+      const summaryTop = summaryStartY
+
       doc.rect(tableLeft, summaryTop, summaryBoxWidth, summaryHeaderHeight).fill('#E7E6E6')
       doc.fontSize(8).fillColor('#000000').font('Helvetica-Bold')
         .text('Summary', tableLeft, summaryTop + 4, { width: summaryBoxWidth, align: 'center' })
@@ -467,6 +465,8 @@ export const generatePdf = async (filters = {}) => {
         .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
 
       // PAYMENT SUMMARY TABLE
+      const paymentTableTop = summaryTop + summaryBlockHeight + gapBetweenBlocks
+
       doc.rect(tableLeft, paymentTableTop, paymentTableWidth, paymentHeaderHeight).fill('#D9E2F3')
       doc.fontSize(7).fillColor('#000000').font('Helvetica-Bold')
 

@@ -3,12 +3,10 @@ function Footer() {
   
   return (
     <footer className="app-footer">
-      <div className="float-end d-none d-sm-inline">
-        React + Express
-      </div>
+     
       <strong>
-        Copyright © {year} <a href="#">Tu Empresa</a>.
-      </strong> Todos los derechos reservados.
+        Copyright © {year} <a href="#">McAllen Foreign Trade Zone</a>.
+      </strong> All rights reserved.
     </footer>
   )
 }

@@ -125,7 +125,7 @@ function Login() {
           <div className="card-footer bg-light text-center py-3 border-0">
             <small className="text-muted">
               <i className="bi bi-lock-fill me-1"></i>
-              Secure connection · © {new Date().getFullYear()} Your Company
+              Secure connection · © {new Date().getFullYear()} McAllen Foreign Trade Zone
             </small>
           </div>
         </div>

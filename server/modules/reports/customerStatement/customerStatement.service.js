@@ -991,6 +991,22 @@ export function drawTicket612x396(doc, t, logoPath) {
   doc.stroke()
   doc.restore()
 
+  // ========== WATERMARK (logo centered, semi-transparent) ==========
+  if (logoPath) {
+    try {
+      const wmW = 380
+      const wmH = 220
+      const wmX = (W - wmW) / 2
+      const wmY = (H - wmH) / 2
+      doc.save()
+      doc.opacity(0.08)
+      doc.image(logoPath, wmX, wmY, { fit: [wmW, wmH], align: 'center', valign: 'center' })
+      doc.restore()
+    } catch (e) {
+      // ignore
+    }
+  }
+
   // =======================
   // 1) Columnas tipo WPF (3* / 2*)  <<< CLAVE
   // =======================

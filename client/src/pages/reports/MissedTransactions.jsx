@@ -115,9 +115,12 @@ function MissedTransactions() {
   const end = start + pageSize
   const pagedData = data.slice(start, end)
 
-  // Porcentaje de missed para la barra visual
+  // Porcentajes para las tarjetas
   const missedPct = totals.total_captures > 0
     ? ((totals.unmatched_count / totals.total_captures) * 100).toFixed(1)
+    : '0.0'
+  const completedPct = totals.total_captures > 0
+    ? ((totals.matched_count / totals.total_captures) * 100).toFixed(1)
     : '0.0'
 
   return (
@@ -194,7 +197,7 @@ function MissedTransactions() {
             <div className="card text-center border-0 shadow-sm">
               <div className="card-body py-3">
                 <h3 className="mb-0 text-success">{totals.matched_count}</h3>
-                <small className="text-muted">Used / Matched</small>
+                <small className="text-muted">Completed ({completedPct}%)</small>
               </div>
             </div>
           </div>
@@ -209,7 +212,7 @@ function MissedTransactions() {
           <div className="col-md-3">
             <div className="card text-center border-0 shadow-sm">
               <div className="card-body py-3">
-                <h3 className="mb-0 text-dark">{formatNumber(totals.total_weight)} lb</h3>
+                <h3 className="mb-0 text-dark">{formatNumber(totals.total_missed_weight)} lb</h3>
                 <small className="text-muted">Total Weight</small>
               </div>
             </div>

@@ -83,14 +83,23 @@ export const getData = async (filters = {}) => {
     ORDER BY MAX(ssa.captured_local) DESC
   `
 
-  const data = await query(sql, params)
+  const allData = await query(sql, params)
+
+  const total_captures = allData.length
+  const matched_count = allData.filter(d => d.is_matched === 1).length
+  const unmatched_count = allData.filter(d => d.is_matched === 0).length
 
   const totals = {
-    total_captures: data.length,
-    matched_count: data.filter(d => d.is_matched === 1).length,
-    unmatched_count: data.filter(d => d.is_matched === 0).length,
-    total_weight: data.reduce((sum, d) => sum + (parseFloat(d.weight_lb) || 0), 0)
+    total_captures,
+    matched_count,
+    matched_percent: total_captures ? ((matched_count / total_captures) * 100).toFixed(1) : '0.0',
+    unmatched_count,
+    unmatched_percent: total_captures ? ((unmatched_count / total_captures) * 100).toFixed(1) : '0.0',
+    total_missed_weight: allData.filter(d => d.is_matched === 0).reduce((sum, d) => sum + (parseFloat(d.weight_lb) || 0), 0),
   }
+
+  // Solo retornamos las Missed
+  const data = allData.filter(d => d.is_matched === 0)
 
   return { data, totals }
 }
@@ -221,9 +230,8 @@ export const generatePdf = async (filters = {}) => {
         doc.fontSize(7).font('Helvetica-Bold')
 
         doc.fillColor('#333333').text(`Total Captures: ${totals.total_captures}`, marginLeft, yPos)
-        doc.fillColor(successColor).text(`Used: ${totals.matched_count}`, marginLeft + 130, yPos)
-        doc.fillColor(dangerColor).text(`Missed: ${totals.unmatched_count}`, marginLeft + 230, yPos)
-        doc.fillColor('#333333').text(`Total Weight: ${formatNumber(totals.total_weight)} lb`, marginLeft + 350, yPos)
+        doc.fillColor(successColor).text(`Completed: ${totals.matched_count} (${totals.matched_percent}%)`, marginLeft + 130, yPos)
+        doc.fillColor(dangerColor).text(`Missed: ${totals.unmatched_count} (${totals.unmatched_percent}%)`, marginLeft + 270, yPos)
 
         doc.moveTo(marginLeft, 70).lineTo(pageWidth - marginRight, 70).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
 
@@ -287,7 +295,7 @@ export const generatePdf = async (filters = {}) => {
         }
 
         const row = data[rowIndex]
-        const statusLabel = row.is_matched ? 'Used' : 'Missed'
+        const statusLabel = row.is_matched ? 'Completed' : 'Missed'
         const statusColor = row.is_matched ? successColor : dangerColor
 
         const rowData = [
@@ -341,11 +349,9 @@ export const generatePdf = async (filters = {}) => {
       doc.fontSize(7).fillColor('#000000').font('Helvetica')
       doc.text(`Total Captures: ${totals.total_captures}`, tableLeft + 6, summaryTop + summaryHeaderHeight + 3)
       doc.fillColor(successColor).font('Helvetica-Bold')
-        .text(`Used: ${totals.matched_count}`, tableLeft + 130, summaryTop + summaryHeaderHeight + 3)
+        .text(`Completed: ${totals.matched_count} (${totals.matched_percent}%)`, tableLeft + 130, summaryTop + summaryHeaderHeight + 3)
       doc.fillColor(dangerColor)
-        .text(`Missed: ${totals.unmatched_count}`, tableLeft + 230, summaryTop + summaryHeaderHeight + 3)
-      doc.fillColor('#000000').font('Helvetica')
-        .text(`Total Weight: ${formatNumber(totals.total_weight)} lb`, tableLeft + 340, summaryTop + summaryHeaderHeight + 3)
+        .text(`Missed: ${totals.unmatched_count} (${totals.unmatched_percent}%)`, tableLeft + 290, summaryTop + summaryHeaderHeight + 3)
 
       doc.rect(tableLeft, summaryTop, summaryBoxWidth, summaryBlockHeight)
         .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
@@ -422,15 +428,12 @@ export const generateExcel = async (filters = {}) => {
   worksheet.getCell('A6').value = 'Total Captures:'
   worksheet.getCell('B6').value = totals.total_captures
   worksheet.getCell('B6').font = { bold: true }
-  worksheet.getCell('C6').value = 'Used:'
-  worksheet.getCell('D6').value = totals.matched_count
+  worksheet.getCell('C6').value = 'Completed:'
+  worksheet.getCell('D6').value = `${totals.matched_count} (${totals.matched_percent}%)`
   worksheet.getCell('D6').font = { color: { argb: '28A745' }, bold: true }
   worksheet.getCell('E6').value = 'Missed:'
-  worksheet.getCell('F6').value = totals.unmatched_count
+  worksheet.getCell('F6').value = `${totals.unmatched_count} (${totals.unmatched_percent}%)`
   worksheet.getCell('F6').font = { color: { argb: 'DC3545' }, bold: true }
-  worksheet.getCell('G6').value = 'Total Weight:'
-  worksheet.getCell('H6').value = totals.total_weight
-  worksheet.getCell('H6').numFmt = '#,##0.00'
 
   worksheet.addRow([])
 
@@ -457,7 +460,7 @@ export const generateExcel = async (filters = {}) => {
 
   let currentRow = tableStartRow + 1
   data.forEach((row, index) => {
-    const statusLabel = row.is_matched ? 'Used' : 'Missed'
+    const statusLabel = row.is_matched ? 'Completed' : 'Missed'
     const statusColor = row.is_matched ? '28A745' : 'DC3545'
 
     const rowData = [

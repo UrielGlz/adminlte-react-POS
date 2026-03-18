@@ -20,26 +20,23 @@ function UsersComplete() {
     confirmPassword: ''
   })
   const [searchTerm, setSearchTerm] = useState('')
-  const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 1 })
   const [changePw, setChangePw] = useState(false)
 
   useEffect(() => {
     loadUsers()
   }, [])
-  useEffect(() => { setPage(1) }, [searchTerm])
 
+  useEffect(() => {
+    setPage(1)
+  }, [searchTerm, pageSize])
 
   const loadUsers = async () => {
     setLoading(true)
     try {
       const response = await api.get('/users')
-      console.log('API Response:', response.data) // Debug
-
-      // La respuesta viene en response.data.data (paginada)
+      console.log('API Response:', response.data)
       setUsers(response.data.data || [])
-
       setPage(1)
-
     } catch (error) {
       console.error('Error loading users:', error)
       setUsers([])
@@ -169,6 +166,7 @@ function UsersComplete() {
     (user.full_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
     (user.email?.toLowerCase() || '').includes(searchTerm.toLowerCase())
   )
+
   const totalRows = filteredUsers.length
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))
   const safePage = Math.min(Math.max(page, 1), totalPages)
@@ -233,7 +231,7 @@ function UsersComplete() {
             <div className="col-lg-3 col-6">
               <div className="small-box text-bg-primary">
                 <div className="inner">
-                  <h3>{pagination.total}</h3>
+                  <h3>{users.length}</h3>
                   <p>Total Users</p>
                 </div>
                 <div className="small-box-icon">
@@ -328,7 +326,7 @@ function UsersComplete() {
                       <th>Email</th>
                       <th>Role</th>
                       <th>Status</th>
-                      <th>Created</th>
+
                       <th>Created</th>
                       <th>Created By</th>
                       <th>Last Edit By</th>
@@ -382,7 +380,7 @@ function UsersComplete() {
                               </span>
                             )}
                           </td>
-                          <td>{formatDate(user.created_at)}</td>
+
                           <td>{formatDate(user.created_at)}</td>
                           <td>
                             {user.created_by_username ? (

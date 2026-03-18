@@ -11,8 +11,6 @@ import logger from '../../utils/logger.js'
  */
 export const findAll = async (options = {}) => {
   const {
-    page = 1,
-    limit = 10,
     search = '',
     is_active = null,
     role_code = null,
@@ -20,7 +18,6 @@ export const findAll = async (options = {}) => {
     order = 'DESC',
   } = options
 
-  const offset = (page - 1) * limit
   const params = []
 
   let sql = `SELECT 
@@ -43,39 +40,30 @@ export const findAll = async (options = {}) => {
     LEFT JOIN users editor ON u.edited_by_user = editor.user_id
     WHERE 1=1 AND u.role_code <> 'SUPERADMIN'`
 
-  // Filtro de búsqueda
   if (search) {
-    sql += ` AND (username LIKE ? OR full_name LIKE ? OR email LIKE ?)`
+    sql += ` AND (u.username LIKE ? OR u.full_name LIKE ? OR u.email LIKE ?)`
     params.push(`%${search}%`, `%${search}%`, `%${search}%`)
   }
 
-  // Filtro de status
   if (is_active !== null) {
-    sql += ` AND is_active = ?`
+    sql += ` AND u.is_active = ?`
     params.push(is_active)
   }
 
-  // Filtro de rol
   if (role_code) {
-    sql += ` AND role_code = ?`
+    sql += ` AND u.role_code = ?`
     params.push(role_code)
   }
 
-  // Ordenamiento
   const validOrderBy = ['user_id', 'username', 'full_name', 'email', 'created_at']
   const validOrder = ['ASC', 'DESC']
 
   sql += ` ORDER BY u.${validOrderBy.includes(orderBy) ? orderBy : 'user_id'} ${validOrder.includes(order.toUpperCase()) ? order.toUpperCase() : 'DESC'}`
 
-  // Paginación
-  sql += ` LIMIT ? OFFSET ?`
-  params.push(limit, offset)
-
   logger.sql(sql, params)
 
   return await query(sql, params)
 }
-
 /**
  * Contar total de usuarios
  */
@@ -83,11 +71,10 @@ export const count = async (options = {}) => {
   const { search = '', is_active = null, role_code = null } = options
   const params = []
 
-  let sql = `SELECT COUNT(*) as total FROM users WHERE 1=1`
+  let sql = `SELECT COUNT(*) as total FROM users WHERE 1=1 AND role_code <> 'SUPERADMIN'`
 
   if (search) {
     sql += ` AND (username LIKE ? OR full_name LIKE ? OR email LIKE ?)`
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`)
   }
 
   if (is_active !== null) {

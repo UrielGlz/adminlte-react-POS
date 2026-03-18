@@ -17,24 +17,24 @@ export const getAll = async (req, res, next) => {
       page = 1,
       limit = 10,
       search,
-      status,
-      role,
+      is_active,
+      role_code,
       orderBy,
       order,
     } = req.query
-    
+
     const options = {
       page: parseInt(page),
       limit: parseInt(limit),
       search,
-      status,
-      role,
+      is_active: is_active !== undefined ? parseInt(is_active) : null,
+      role_code,
       orderBy,
       order,
     }
-    
+
     const { users, total } = await UsersService.getAllUsers(options)
-    
+
     // ========== IMPRIMIR EN CONSOLA ==========
     logger.info('Usuarios obtenidos de la BD:')
     console.log('\n========== USUARIOS ==========')
@@ -42,7 +42,7 @@ export const getAll = async (req, res, next) => {
     console.log(`Total: ${total} usuarios`)
     console.log('==============================\n')
     // =========================================
-    
+
     return response.paginated(res, users, {
       page: options.page,
       limit: options.limit,
@@ -60,9 +60,9 @@ export const getAll = async (req, res, next) => {
 export const getStats = async (req, res, next) => {
   try {
     const stats = await UsersService.getUserStats()
-    
+
     logger.info('📊 Estadísticas de usuarios:', stats)
-    
+
     return response.success(res, stats)
   } catch (error) {
     next(error)
@@ -77,12 +77,12 @@ export const getById = async (req, res, next) => {
   try {
     const { id } = req.params
     const user = await UsersService.getUserById(id)
-    
+
     logger.info(`📄 Usuario obtenido: ${user.email}`)
     console.log('\n========== USUARIO ==========')
     console.log(user)
     console.log('==============================\n')
-    
+
     return response.success(res, user)
   } catch (error) {
     next(error)
@@ -123,14 +123,14 @@ export const update = async (req, res, next) => {
   try {
     const { id } = req.params
     const data = req.body
-    
+
     // 👇 NUEVO: obtener ID del usuario actual desde el token JWT
     const currentUserId = req.user?.userId || req.user?.user_id || null
-    
+
     const user = await UsersService.updateUser(id, data, currentUserId)
-    
+
     logger.info(`✏️ Usuario actualizado: ${user.email} por user_id: ${currentUserId}`)
-    
+
     return response.success(res, user, 'User updated successfully')
   } catch (error) {
     next(error)

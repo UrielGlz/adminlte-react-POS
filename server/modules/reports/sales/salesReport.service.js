@@ -221,15 +221,9 @@ export const generatePdf = async (filters = {}) => {
 
   const formatDate = (date) => {
     if (!date) return '-'
-
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',        // respeta la hora del ...Z
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    }).format(new Date(date))
+    return new Date(date).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    })
   }
 
 
@@ -543,7 +537,12 @@ export const generateExcel = async (filters = {}) => {
   const { data, totals, payment_summary } = await getData(filters)
   const settings = await getReportSettings()
 
-  const formatDate = (date) => date ? new Date(date).toLocaleString('en-US') : '-'
+  const formatDate = (date) => {
+    if (!date) return '-'
+    return new Date(date).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    })
+  }
 
   const workbook = new ExcelJS.Workbook()
   workbook.creator = settings.companyName

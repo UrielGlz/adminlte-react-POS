@@ -253,6 +253,7 @@ function MissedTransactions() {
                     <th className="text-end">Total</th>
                     <th>Operator</th>
                     <th className="text-center">Status</th>
+                    <th>Reason</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -279,6 +280,7 @@ function MissedTransactions() {
                           <span className="badge bg-danger">Missed</span>
                         )}
                       </td>
+                      <td>{row.missed_reason || '-'}</td>
                     </tr>
                   ))}
                 </tbody>

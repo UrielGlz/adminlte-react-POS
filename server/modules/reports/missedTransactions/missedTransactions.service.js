@@ -57,6 +57,7 @@ export const getData = async (filters = {}) => {
       MAX(ssa.peso_total) as peso_total,
       MAX(ssa.operator_id) as operator_id,
       MAX(u.full_name) as operator_name,
+      MAX(vr.label) as missed_reason,
       CASE
         WHEN EXISTS (
           SELECT 1 FROM sale_driver_info sdi
@@ -66,6 +67,7 @@ export const getData = async (filters = {}) => {
       END as is_matched
     FROM scale_session_axles ssa
     LEFT JOIN users u ON ssa.operator_id = u.user_id
+    LEFT JOIN void_reasons vr ON ssa.missed_reason_id = vr.void_reason_id
     WHERE 1=1
   `
 
@@ -249,10 +251,10 @@ export const generatePdf = async (filters = {}) => {
 
       // ========== TABLE ==========
       const tableLeft = marginLeft
-      // #, ID, UUID, Date/Time, Weight lb, Eje1, Eje2, Eje3, Total, Operator, Status
-      const colWidths = [30, 40, 130, 75, 55, 50, 50, 50, 55, 80, 55]
+      // #, ID, UUID, Date/Time, Weight lb, Eje1, Eje2, Eje3, Total, Operator, Status, Reason
+      const colWidths = [25, 35, 110, 70, 50, 45, 45, 45, 50, 75, 50, 70]
       const tableWidth = colWidths.reduce((a, b) => a + b, 0)
-      const headers = ['#', 'ID', 'UUID', 'Date/Time', 'Weight', 'Eje 1', 'Eje 2', 'Eje 3', 'Total', 'Operator', 'Status']
+      const headers = ['#', 'ID', 'UUID', 'Date/Time', 'Weight', 'Eje 1', 'Eje 2', 'Eje 3', 'Total', 'Operator', 'Status', 'Reason']
       const tableHeaderHeight = 14
 
       const drawTableHeader = (y) => {
@@ -309,7 +311,8 @@ export const generatePdf = async (filters = {}) => {
           formatInt(row.eje3),
           formatInt(row.peso_total),
           (row.operator_name || '-').substring(0, 14),
-          statusLabel
+          statusLabel,
+          row.missed_reason || '-'
         ]
 
         doc.fontSize(5.5).font('Helvetica')
@@ -321,7 +324,7 @@ export const generatePdf = async (filters = {}) => {
             doc.fillColor('#333333').font('Helvetica')
           }
           const align = (i >= 4 && i <= 8) ? 'right' : (i === 10 ? 'center' : 'left')
-          doc.text(String(cell), xPos, yPos + 3, { width: colWidths[i] - 4, align })
+          doc.text(String(cell), xPos, yPos + 3, { width: colWidths[i] - 4, align, lineBreak: false })
           xPos += colWidths[i]
         })
 
@@ -396,12 +399,12 @@ export const generateExcel = async (filters = {}) => {
   })
 
   // ========== HEADER (A..K = 11 columnas) ==========
-  worksheet.mergeCells('A1:K1')
+  worksheet.mergeCells('A1:L1')
   worksheet.getCell('A1').value = settings.companyName
   worksheet.getCell('A1').font = { size: 16, bold: true, color: { argb: '6F42C1' } }
   worksheet.getCell('A1').alignment = { horizontal: 'center' }
 
-  worksheet.mergeCells('A2:K2')
+  worksheet.mergeCells('A2:L2')
   worksheet.getCell('A2').value = 'Missed Transactions Report'
   worksheet.getCell('A2').font = { size: 12, bold: true }
   worksheet.getCell('A2').alignment = { horizontal: 'center' }
@@ -411,7 +414,7 @@ export const generateExcel = async (filters = {}) => {
     filters.date_to ? `To: ${filters.date_to}` : ''
   ].filter(Boolean).join(' | ') || 'All records'
 
-  worksheet.mergeCells('A3:K3')
+  worksheet.mergeCells('A3:L3')
   worksheet.getCell('A3').value = `Generated: ${new Date().toLocaleString('en-US')} | ${filterText}`
   worksheet.getCell('A3').font = { size: 9, italic: true, color: { argb: '666666' } }
   worksheet.getCell('A3').alignment = { horizontal: 'center' }
@@ -419,7 +422,7 @@ export const generateExcel = async (filters = {}) => {
   worksheet.addRow([])
 
   // ========== SUMMARY ==========
-  worksheet.mergeCells('A5:K5')
+  worksheet.mergeCells('A5:L5')
   const summHeader = worksheet.getCell('A5')
   summHeader.value = 'Summary'
   summHeader.font = { bold: true, color: { argb: 'FFFFFF' } }
@@ -440,10 +443,10 @@ export const generateExcel = async (filters = {}) => {
   // ========== TABLE ==========
   const tableStartRow = 8
 
-  const colWidths = [8, 10, 32, 20, 12, 10, 10, 10, 12, 18, 12]
+  const colWidths = [8, 10, 32, 20, 12, 10, 10, 10, 12, 18, 12, 20]
   colWidths.forEach((w, i) => worksheet.getColumn(i + 1).width = w)
 
-  const headers = ['#', 'ID', 'UUID', 'Date/Time', 'Weight', 'Eje 1', 'Eje 2', 'Eje 3', 'Total', 'Operator', 'Status']
+  const headers = ['#', 'ID', 'UUID', 'Date/Time', 'Weight', 'Eje 1', 'Eje 2', 'Eje 3', 'Total', 'Operator', 'Status', 'Reason']
   headers.forEach((h, i) => {
     const cell = worksheet.getCell(tableStartRow, i + 1)
     cell.value = h
@@ -474,7 +477,8 @@ export const generateExcel = async (filters = {}) => {
       Math.round(Number(row.eje3) || 0),
       Math.round(Number(row.peso_total) || 0),
       row.operator_name || '-',
-      statusLabel
+      statusLabel,
+      row.missed_reason || '-'
     ]
 
     rowData.forEach((value, colIndex) => {

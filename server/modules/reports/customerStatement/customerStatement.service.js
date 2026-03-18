@@ -60,14 +60,14 @@ const formatTicketTime = (date) => {
     hour12: true
   })
 }
-
+//· (956) 882-9111 Fax
 const ticketHeaderLines = [
   'McAllen Foreign Trade Zone',
   'Certified Public Truck Scale',
   '6401 S. 33rd Street · McAllen, Texas 78503',
-  '(956) 682-4306 · (956) 882-9111 Fax',
+  '(956) 682-4306',
   'Certificate No. 036231',
-  'Website: http://www.mftz.org    Email: fizinfo@mftz.org'
+  'Website: www.mcallenftz.org    Email: fizinfo@mftz.org'
 ]
 
 const buildQrPayload = ({ sale_uid, ticket_uid, payment_uid }) => {

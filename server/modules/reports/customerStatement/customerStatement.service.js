@@ -178,6 +178,7 @@ export const getCustomerTransactions = async (customerId, dateFrom, dateTo) => {
       sale_st.label as sale_status_label,
       ticket_st.code as ticket_status_code,
       ticket_st.label as ticket_status_label,
+      sdi.account_name,
       sdi.driver_first_name,
       sdi.driver_last_name,
       sdi.vehicle_plates,
@@ -345,14 +346,18 @@ export const hydrateTicketsForPrint = async (tickets = [], opts = {}) => {
   if (reweighSaleUids.length > 0) {
     const ph = reweighSaleUids.map(() => '?').join(',')
     const rows = await query(
-      `SELECT s.sale_uid, t.ticket_number
+      `SELECT s.sale_uid, t.ticket_number,
+              COALESCE(t.printed_at, s.occurred_at, s.created_at) as original_printed_at
        FROM sales s
        JOIN tickets t ON s.sale_uid = t.sale_uid
        WHERE s.sale_uid IN (${ph})`,
       reweighSaleUids
     )
     for (const r of rows) {
-      originalTicketMap.set(r.sale_uid, r.ticket_number)
+      originalTicketMap.set(r.sale_uid, {
+        ticket_number: r.ticket_number,
+        printed_at: r.original_printed_at
+      })
     }
   }
 
@@ -374,15 +379,16 @@ export const hydrateTicketsForPrint = async (tickets = [], opts = {}) => {
       })
     }
 
-    // Original ticket number for reweigh
-    const original_ticket_number = t.reweigh_of_sale_id
+    // Original ticket data for reweigh
+    const originalData = t.reweigh_of_sale_id
       ? (originalTicketMap.get(t.reweigh_of_sale_id) || null)
       : null
 
     return {
       ...t,
       qrPng,
-      original_ticket_number,
+      original_ticket_number: originalData?.ticket_number || null,
+      original_printed_at: originalData?.printed_at || null,
       signaturePng: withSignature ? (sigMap.get(t.ticket_uid) || null) : (t.signaturePng || null),
       weigh_fee_text: t.weigh_fee_text || formatCurrency(t.weigh_fee ?? t.total_amount ?? 0)
     }
@@ -1041,23 +1047,23 @@ export function drawTicket612x396(doc, t, logoPath) {
   let headerY = contentY + 2
 
   doc.font('Helvetica-Bold').fontSize(13).fillColor('#000000')
-  doc.text('Certified Public Truck Scale', headerCenterX, headerY, { width: headerTextW, align: 'center' })
+  doc.text('Certified Public Truck Scale', headerCenterX, headerY, { width: headerTextW, align: 'left' })
   headerY += 16
 
   doc.font('Helvetica').fontSize(8.5)
-  doc.text('6401 S. 33rd Street · McAllen, Texas 78503', headerCenterX, headerY, { width: headerTextW, align: 'center' })
+  doc.text('6401 S. 33rd Street · McAllen, Texas 78503', headerCenterX, headerY, { width: headerTextW, align: 'left' })
   headerY += 11
 
-  doc.text('(956) 682-4306 · (956) 882-9111 Fax', headerCenterX, headerY, { width: headerTextW, align: 'center' })
+  doc.text('(956) 682-4306', headerCenterX, headerY, { width: headerTextW, align: 'left' })
   headerY += 11
 
-  doc.text('Certificate No. 036231', headerCenterX, headerY, { width: headerTextW, align: 'center' })
+  doc.text('Certificate No. 036231', headerCenterX, headerY, { width: headerTextW, align: 'left' })
   headerY += 11
 
-  doc.text('Website: http://www.mftz.org', headerCenterX, headerY, { width: headerTextW, align: 'center' })
+  doc.text('Website: www.mcallenftz.org', headerCenterX, headerY, { width: headerTextW, align: 'left' })
   headerY += 11
 
-  doc.text('Email: fizinfo@mftz.org', headerCenterX, headerY, { width: headerTextW, align: 'center' })
+  doc.text('Email: fizinfo@mftz.org', headerCenterX, headerY, { width: headerTextW, align: 'left' })
 
   // ========== TICKET NUMBER (top right) ==========
   const ticketX = W - MARGIN - 135
@@ -1094,6 +1100,13 @@ export function drawTicket612x396(doc, t, logoPath) {
   const driverY = contentY + 115
 
   const driverName = [t.driver_first_name, t.driver_last_name].filter(Boolean).join(' ') || '-'
+
+  // Company name above Driver
+  if (t.account_name) {
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#000000')
+    doc.text('Company:', driverX, driverY - 14, { continued: true })
+    doc.font('Helvetica').text(`  ${t.account_name}`)
+  }
 
   doc.font('Helvetica-Bold').fontSize(10).fillColor('#000000')
   doc.text('Driver:', driverX, driverY, { continued: true })
@@ -1191,31 +1204,48 @@ export function drawTicket612x396(doc, t, logoPath) {
   // =======================
   // 5) Signature (izquierda)
   // =======================
-  const signY = prodY + 50
+  // Layout horizontal clásico de documento:
+  //   "Signature:" [label]  _____________________ [línea + imagen encima]
+  //
+  // TICKET_H = 504pt, product box bottom = prodY+36 = 327
+  //
+  //   signY     (351) → fila del label "Signature:" y baseline de la línea
+  //   sigBoxY   (329) → tope de la imagen (bottom de imagen = baseline de línea = 359)
+  //   sigLineY  (359) → línea horizontal visible
+  //   +10pt     (369) → texto legal
+  const signY    = prodY + 60           // fila del label: 291+60 = 351
+  const sigBoxH  = 30                   // altura de imagen (razonable, no pequeña)
+  const sigBoxX  = contentX + 62       // a la derecha del label "Signature:"
+  const sigBoxW  = LEFT_W - 67         // ancho del área línea/imagen hasta el borde de col
+  const sigBoxY  = signY + 8 - sigBoxH // imagen anclada por la base a la línea: 351+8-30 = 329
+  const sigLineY = signY + 8           // línea en el baseline del label: 359
 
-  doc.font('Helvetica').fontSize(8.5).fillColor('#000000')
+  // "Signature:" label a la izquierda
+  doc.font('Helvetica').fontSize(8).fillColor('#000000')
   doc.text('Signature:', contentX, signY)
 
-  const sigBoxX = contentX + 62
-  const sigBoxY = signY - 10
-  const sigBoxW = LEFT_W - 72
-  const sigBoxH = 48
-
+  // Imagen de firma encima de la línea (a la derecha del label, NO encima del texto)
   if (t.signaturePng) {
     try {
       doc.image(t.signaturePng, sigBoxX, sigBoxY, { fit: [sigBoxW, sigBoxH] })
     } catch (e) {
-      doc.text('___________________________', sigBoxX, signY)
+      // ignorar error de imagen
     }
-  } else {
-    doc.text('___________________________', sigBoxX, signY)
   }
 
-  doc.fontSize(7)
+  // Línea horizontal visible (debajo de la imagen, alineada al baseline del label)
+  doc.save()
+  doc.lineWidth(0.75)
+  doc.strokeColor('#000000')
+  doc.moveTo(sigBoxX, sigLineY).lineTo(sigBoxX + sigBoxW, sigLineY).stroke()
+  doc.restore()
+
+  // Texto legal bien separado bajo la línea
+  doc.font('Helvetica').fontSize(7).fillColor('#000000')
   doc.text(
     'ALL RE-WEIGHS MUST BE DONE WITHIN 12 HOURS OF ORIGINAL WEIGH TIME.',
     contentX,
-    signY + 13,
+    sigLineY + 10,
     { width: LEFT_W }
   )
 
@@ -1339,7 +1369,16 @@ export function drawTicket612x396(doc, t, logoPath) {
   doc.text('Ticket No:', formX + 10, layout.formY + 19)
   doc.font('Helvetica').text(t.original_ticket_number ? String(t.original_ticket_number) : '', formX + 70, layout.formY + 19)
 
+  doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#000000')
   doc.text('Date and Time:', formX + 10, layout.formY + 32)
+  if (t.reweigh_of_sale_id && t.original_printed_at) {
+    doc.font('Helvetica').fontSize(8).fillColor('#000000')
+    doc.text(
+      `${formatTicketDate(t.original_printed_at)} ${formatTicketTime(t.original_printed_at)}`,
+      formX + 80, layout.formY + 32,
+      { width: formW - 90 }
+    )
+  }
 
   const initialsY = layout.formY + (layout.formH - 16)
   doc.text('Initials:', formX + 10, initialsY)

@@ -135,6 +135,7 @@ async function buildTicketObjectFromSale(sale) {
     qrPng,
 
     // driver info
+    account_name: driver.account_name || null,
     driver_first_name: driver.driver_first_name || null,
     driver_last_name: driver.driver_last_name || null,
     vehicle_plates: driver.vehicle_plates || null,
@@ -157,8 +158,8 @@ async function buildTicketObjectFromSale(sale) {
     sale_uid: sale.sale_uid,
     ticket_uid,
 
-    // reweigh info
-    is_reweigh: sale.is_reweigh || 0,
+    // reweigh info — is_reweigh se deriva de reweigh_of_sale_id (columna física, siempre en s.*)
+    is_reweigh: sale.reweigh_of_sale_id ? 1 : 0,
     reweigh_of_sale_id: sale.reweigh_of_sale_id || null,
   }
 }

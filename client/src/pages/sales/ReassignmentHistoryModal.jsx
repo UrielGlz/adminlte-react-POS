@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../../services/api'
+import { formatDateTime } from '../../utils/dateHelpers'
 
 function ReassignmentHistoryModal({ saleUid, onClose }) {
   const [history, setHistory] = useState([])
@@ -8,13 +9,7 @@ function ReassignmentHistoryModal({ saleUid, onClose }) {
   const formatCurrency = (val) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0)
 
-  const formatDate = (date) => {
-    if (!date) return '-'
-    return new Date(date).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', year: 'numeric',
-      hour: '2-digit', minute: '2-digit'
-    })
-  }
+  const formatDate = formatDateTime
 
   useEffect(() => {
     fetchHistory()

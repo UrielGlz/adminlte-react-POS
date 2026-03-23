@@ -6,6 +6,7 @@ import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
 import QRCode from 'qrcode'
+import { formatDateTime as _formatDateTime, formatDateOnly, formatGeneratedTimestamp } from '../../../utils/dateHelpers.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -41,24 +42,11 @@ const toInt0 = (v) => {
   return Math.round(n)
 }
 
-const formatTicketDate = (date) => {
-  if (!date) return '-'
-  return new Date(date).toLocaleDateString('en-US', {
-    timeZone: 'America/Matamoros',
-    month: '2-digit',
-    day: '2-digit',
-    year: 'numeric'
-  })
-}
+const formatTicketDate = formatDateOnly
 
 const formatTicketTime = (date) => {
-  if (!date) return '-'
-  return new Date(date).toLocaleTimeString('en-US', {
-    timeZone: 'America/Matamoros',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
-  })
+  if (!date) return ''
+  return _formatDateTime(date).replace(/^.*?,\s*/, '')
 }
 //· (956) 882-9111 Fax
 const ticketHeaderLines = [
@@ -424,16 +412,7 @@ export const generatePdf = async (filters = {}) => {
     return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val)
   }
 
-  const formatDateTime = (date) => {
-    if (!date) return '-'
-    return new Date(date).toLocaleString('en-US', {
-      timeZone: 'America/Matamoros',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
+  const formatDateTime = _formatDateTime
 
   const logoPath = getLogoPath(settings.companyLogo)
 
@@ -565,14 +544,7 @@ export const generatePdf = async (filters = {}) => {
         const metaW = 150
         const metaX = pageWidth - marginRight - metaW
 
-        const generatedTxt = new Intl.DateTimeFormat('en-US', {
-          year: 'numeric',
-          month: 'numeric',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true
-        }).format(new Date())
+        const generatedTxt = formatGeneratedTimestamp()
 
         doc.fontSize(7).fillColor(textGray).font('Helvetica')
         doc.text(`Generated: ${generatedTxt}`, metaX, headerTop + 6, {
@@ -1414,7 +1386,7 @@ export const generateExcel = async (filters = {}) => {
     throw new Error('Customer not found')
   }
 
-  const formatDate = (date) => date ? new Date(date).toLocaleString('en-US') : '-'
+  const formatDate = _formatDateTime
 
   const workbook = new ExcelJS.Workbook()
   workbook.creator = settings.companyName
@@ -1442,7 +1414,7 @@ export const generateExcel = async (filters = {}) => {
   ].filter(Boolean).join(' - ') || 'All time'
 
   worksheet.mergeCells('A3:M3')
-  worksheet.getCell('A3').value = `Generated: ${new Date().toLocaleString('en-US')} | ${dateRange}`
+  worksheet.getCell('A3').value = `Generated: ${formatGeneratedTimestamp()} | ${dateRange}`
   worksheet.getCell('A3').font = { size: 9, italic: true, color: { argb: '666666' } }
   worksheet.getCell('A3').alignment = { horizontal: 'center' }
 

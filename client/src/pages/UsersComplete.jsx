@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../services/api'
 import { showAlert, showToast, confirmAction } from '../utils/alerts'
+import { formatDateTime } from '../utils/dateHelpers'
 
 function UsersComplete() {
   const [page, setPage] = useState(1)
@@ -185,22 +186,6 @@ function UsersComplete() {
     return badges[role] || 'secondary'
   }
 
-  // const formatDate = (dateString) => {
-  //   if (!dateString) return '-'
-  //   return new Date(dateString).toLocaleDateString('es-MX')
-  // }
-  const formatDate = (date) => {
-    if (!date) return '-'
-
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',        // respeta la hora del ...Z
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    }).format(new Date(date))
-  }
 
   return (
     <>
@@ -381,7 +366,7 @@ function UsersComplete() {
                             )}
                           </td>
 
-                          <td>{formatDate(user.created_at)}</td>
+                          <td>{formatDateTime(user.created_at)}</td>
                           <td>
                             {user.created_by_username ? (
                               <span className="badge text-bg-light">{user.created_by_username}</span>

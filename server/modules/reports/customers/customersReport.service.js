@@ -5,6 +5,7 @@ import ExcelJS from 'exceljs'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
+import { formatGeneratedTimestamp } from '../../../utils/dateHelpers.js'
 
 // Para obtener __dirname en ES modules
 const __filename = fileURLToPath(import.meta.url)
@@ -188,7 +189,7 @@ export const generatePdf = async (filters = {}) => {
           .text('Customers Report', col2X, headerTop + 25, { width: colWidth, align: 'center' })
 
         doc.fontSize(8).fillColor(textGray).font('Helvetica')
-          .text(`Generated: ${new Date().toLocaleString('en-US')}`, col3X, headerTop + 10, { width: colWidth - marginRight, align: 'right' })
+          .text(`Generated: ${formatGeneratedTimestamp()}`, col3X, headerTop + 10, { width: colWidth - marginRight, align: 'right' })
           .text(`Filters: Status: ${filters.status || 'All'} | Credit: ${filters.has_credit || 'All'}`, col3X, headerTop + 22, { width: colWidth - marginRight, align: 'right' })
 
         doc.moveTo(marginLeft, 75).lineTo(pageWidth - marginRight, 75).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
@@ -347,7 +348,7 @@ export const generateExcel = async (filters = {}) => {
   worksheet.getCell('A2').alignment = { horizontal: 'center' }
 
   worksheet.mergeCells('A3:I3')
-  worksheet.getCell('A3').value = `Generated: ${new Date().toLocaleString('en-US')} | Filters: Status: ${filters.status || 'All'}, Credit: ${filters.has_credit || 'All'}`
+  worksheet.getCell('A3').value = `Generated: ${formatGeneratedTimestamp()} | Filters: Status: ${filters.status || 'All'}, Credit: ${filters.has_credit || 'All'}`
   worksheet.getCell('A3').font = { size: 10, italic: true, color: { argb: '666666' } }
   worksheet.getCell('A3').alignment = { horizontal: 'center' }
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
+import { formatDateTime, formatDateTimeCompact } from '../../utils/dateHelpers'
 
 function PaymentDetail() {
   const { id } = useParams()
@@ -29,29 +30,6 @@ function PaymentDetail() {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0)
   }
 
-  // const formatDate = (date) => {
-  //   if (!date) return '-'
-  //   return new Date(date).toLocaleDateString('en-US')
-  // }
-  const formatDate = (date) => {
-    if (!date) return '-'
-
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',        // respeta la hora del ...Z
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    }).format(new Date(date))
-  }
-
-
-
-  const formatDateTime = (date) => {
-    if (!date) return '-'
-    return new Date(date).toLocaleString('en-US')
-  }
 
   if (loading) {
     return (
@@ -108,7 +86,7 @@ function PaymentDetail() {
                   </tr>
                   <tr>
                     <td className="text-muted">Payment Date:</td>
-                    <td>{formatDate(payment.payment_date)}</td>
+                    <td>{formatDateTime(payment.payment_date)}</td>
                   </tr>
                   <tr>
                     <td className="text-muted">Payment Method:</td>
@@ -140,7 +118,7 @@ function PaymentDetail() {
                   </tr>
                   <tr>
                     <td className="text-muted">Created At:</td>
-                    <td>{formatDateTime(payment.created_at)}</td>
+                    <td>{formatDateTimeCompact(payment.created_at)}</td>
                   </tr>
                   {payment.notes && (
                     <tr>
@@ -209,14 +187,14 @@ function PaymentDetail() {
                   <td>{index + 1}</td>
                   <td><strong>{a.ticket_number || a.sale_uid}</strong></td>
 
-                  <td>{formatDateTime(a.printed_at)}</td>
+                  <td>{formatDateTimeCompact(a.printed_at)}</td>
 
                   <td>{a.operator_user}</td>
                   <td>{a.driver_name}</td>
 
 
                   <td className="text-end text-success">{formatCurrency(a.amount_applied)}</td>
-                  <td>{formatDateTime(a.created_at)}</td>
+                  <td>{formatDateTimeCompact(a.created_at)}</td>
                 </tr>
               ))}
             </tbody>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
+import { formatDateTime, todayDateString } from '../../utils/dateHelpers'
 
 function Sales() {
 
@@ -12,10 +13,11 @@ function Sales() {
   const [loading, setLoading] = useState(true)
   const [summary, setSummary] = useState({})
   const [filters, setFilters] = useState({
-    date_from: new Date().toISOString().split('T')[0],
-    date_to: new Date().toISOString().split('T')[0],
+    date_from: todayDateString(),
+    date_to: todayDateString(),
     status_id: '',
-    is_reweigh: ''
+    is_reweigh: '',
+    ticket_number: ''
   })
 
   useEffect(() => { fetchData() }, [])
@@ -28,6 +30,7 @@ function Sales() {
       if (filters.date_to) params.append('date_to', filters.date_to)
       if (filters.status_id) params.append('status_id', filters.status_id)
       if (filters.is_reweigh !== '') params.append('is_reweigh', filters.is_reweigh)
+      if (filters.ticket_number) params.append('ticket_number', filters.ticket_number)
 
       const [salesRes, summaryRes] = await Promise.all([
         api.get(`/sales?${params.toString()}`),
@@ -51,18 +54,7 @@ function Sales() {
   const applyFilters = () => fetchData()
 
   const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0)
-  const formatDate = (date) => {
-    if (!date) return '-'
-
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',        // respeta la hora del ...Z
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    }).format(new Date(date))
-  }
+  const formatDate = formatDateTime
 
 
   const getStatusBadge = (code) => {
@@ -151,6 +143,10 @@ function Sales() {
             <div className="col-md-2">
               <label className="form-label small">To</label>
               <input type="date" className="form-control form-control-sm" name="date_to" value={filters.date_to} onChange={handleFilter} />
+            </div>
+            <div className="col-md-2">
+              <label className="form-label small">Ticket #</label>
+              <input type="text" className="form-control form-control-sm" name="ticket_number" value={filters.ticket_number} onChange={handleFilter} placeholder="Search ticket..." />
             </div>
             <div className="col-md-2">
               <label className="form-label small">Status</label>

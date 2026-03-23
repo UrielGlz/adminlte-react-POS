@@ -14,6 +14,7 @@ const pool = mysql.createPool({
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
+  timezone: '+00:00',
 })
 
 /**
@@ -24,7 +25,7 @@ const pool = mysql.createPool({
  */
 export const query = async (sql, params = []) => {
   try {
-    const [results] = await pool.execute(sql, params)
+    const [results] = await pool.query(sql, params)
     return results
   } catch (error) {
     logger.error('Database query error:', { sql, error: error.message })

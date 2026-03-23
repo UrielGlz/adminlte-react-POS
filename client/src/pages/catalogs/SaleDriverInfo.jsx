@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
+import { formatDateTime } from '../../utils/dateHelpers'
 
 function SaleDriverInfo() {
   const [items, setItems] = useState([])
@@ -74,22 +75,7 @@ function SaleDriverInfo() {
       Swal.fire('Error', 'Could not load details', 'error')
     }
   }
-
-  const formatDate = (date) => {
-    if (!date) return '-'
-
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',        // respeta la hora del ...Z
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    }).format(new Date(date))
-  }
-
-
-  const clearFilters = () => {
+const clearFilters = () => {
     setSearch('')
     setFilterAccount('')
     setFilterLicenseState('')
@@ -309,7 +295,7 @@ function SaleDriverInfo() {
                   ) : items.map(item => (
                     <tr key={item.id_driver_info}>
                       <td>
-                        <small className="text-muted">{formatDate(item.created_at)}</small>
+                        <small className="text-muted">{formatDateTime(item.created_at)}</small>
                       </td>
                       <td>
                         <div className="d-flex align-items-center">
@@ -579,11 +565,11 @@ function SaleDriverInfo() {
                               </tr>
                               <tr>
                                 <td className="text-muted">Created</td>
-                                <td>{formatDate(selectedItem.created_at)}</td>
+                                <td>{formatDateTime(selectedItem.created_at)}</td>
                               </tr>
                               <tr>
                                 <td className="text-muted">Updated</td>
-                                <td>{formatDate(selectedItem.updated_at)}</td>
+                                <td>{formatDateTime(selectedItem.updated_at)}</td>
                               </tr>
                             </tbody>
                           </table>

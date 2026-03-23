@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
+import { formatDateTime, todayDateString, pastDateString } from '../../utils/dateHelpers'
 
 function CashSales() {
   const [page, setPage] = useState(1)
@@ -18,8 +19,8 @@ function CashSales() {
   const [exporting, setExporting] = useState({ pdf: false, excel: false })
 
   // Filtros - default: último mes
-  const today = new Date().toISOString().split('T')[0]
-  const lastMonth = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  const today = todayDateString()
+  const lastMonth = pastDateString(30)
 
   const [filters, setFilters] = useState({
     date_from: lastMonth,
@@ -116,24 +117,7 @@ function CashSales() {
     return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(val)
   }
 
-  // const formatDate = (date) => {
-  //   if (!date) return '-'
-  //   return new Date(date).toLocaleString('en-US', {
-  //     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-  //   })
-  // }
-  const formatDate = (date) => {
-    if (!date) return '-'
-
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',        // respeta la hora del ...Z
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    }).format(new Date(date))
-  }
+  const formatDate = formatDateTime
 
 
 

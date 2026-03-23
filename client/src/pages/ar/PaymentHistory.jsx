@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
+import { formatDateTime } from '../../utils/dateHelpers'
 
 function PaymentHistory() {
   const [customers, setCustomers] = useState([])
@@ -50,22 +51,6 @@ function PaymentHistory() {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0)
   }
 
-  // const formatDate = (date) => {
-  //   if (!date) return '-'
-  //   return new Date(date).toLocaleDateString('en-US')
-  // }
-  const formatDate = (date) => {
-    if (!date) return '-'
-
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',        // respeta la hora del ...Z
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    }).format(new Date(date))
-  }
 
 
 
@@ -154,7 +139,7 @@ function PaymentHistory() {
                 {history.map(h => (
                   <tr key={h.ar_payment_id}>
                     <td>{h.ar_payment_id}</td>
-                    <td>{formatDate(h.payment_date)}</td>
+                    <td>{formatDateTime(h.payment_date)}</td>
                     <td>{h.payment_method}</td>
                     <td>{h.reference_number || '-'}</td>
                     <td className="text-end">{formatCurrency(h.amount_received)}</td>

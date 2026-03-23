@@ -185,7 +185,9 @@ export const generateDynamicExcel = async (code, filterValues = {}) => {
         cell.value = parseFloat(value)
         cell.numFmt = '#,##0.00'
       } else if (col.data_type === 'date' && value) {
-        cell.value = new Date(value).toLocaleString('en-US')
+        cell.value = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'UTC', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true
+        }).format(new Date(value))
       } else {
         cell.value = value || '-'
       }

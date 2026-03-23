@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
+import { formatDateTime, todayDateString } from '../../utils/dateHelpers'
 
 function AccountsReceivable() {
   // State
@@ -15,7 +16,7 @@ function AccountsReceivable() {
 
   // Payment form state
   const [paymentForm, setPaymentForm] = useState({
-    payment_date: new Date().toISOString().split('T')[0],
+    payment_date: todayDateString(),
     method_id: '',
     reference_number: '',
     amount_received: '',
@@ -261,23 +262,6 @@ function AccountsReceivable() {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0)
   }
 
-  // Format date
-  // const formatDate = (date) => {
-  //   if (!date) return '-'
-  //   return new Date(date).toLocaleDateString('en-US')
-  // }
-  const formatDate = (date) => {
-    if (!date) return '-'
-
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',        // respeta la hora del ...Z
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    }).format(new Date(date))
-  }
 
 
   // Get aging badge color
@@ -460,7 +444,7 @@ function AccountsReceivable() {
                     <>
                       <div className="d-flex justify-content-between mb-2">
                         <span className="text-muted">Date:</span>
-                        <span>{formatDate(customerSummary.last_payment.payment_date)}</span>
+                        <span>{formatDateTime(customerSummary.last_payment.payment_date)}</span>
                       </div>
                       <div className="d-flex justify-content-between mb-2">
                         <span className="text-muted">Amount:</span>
@@ -484,7 +468,7 @@ function AccountsReceivable() {
                   {customerSummary.last_payment_date && (
                     <div className="mt-3 pt-3 border-top">
                       <small className="text-muted">
-                        Last payment date: {formatDate(customerSummary.last_payment_date)}
+                        Last payment date: {formatDateTime(customerSummary.last_payment_date)}
                       </small>
                     </div>
                   )}
@@ -781,7 +765,7 @@ function AccountsReceivable() {
                               <td>
                                 <strong>{t.ticket_number || `Sale #${t.sale_id}`}</strong>
                               </td>
-                              <td>{formatDate(t.transaction_date)}</td>
+                              <td>{formatDateTime(t.transaction_date)}</td>
                               <td className="text-end">{formatCurrency(t.original_amount)}</td>
                               <td className="text-end text-success">
                                 {parseFloat(t.amount_applied) > 0 ? formatCurrency(t.amount_applied) : '-'}

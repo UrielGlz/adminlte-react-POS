@@ -8,7 +8,8 @@ export const getAll = async (req, res, next) => {
       date_from: req.query.date_from,
       date_to: req.query.date_to,
       status_id: req.query.status_id,
-      is_reweigh: req.query.is_reweigh
+      is_reweigh: req.query.is_reweigh,
+      ticket_number: req.query.ticket_number
     }
     const items = await salesService.getAll(filters)
     success(res, items)

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
+import { formatDateTime, formatDateTimeCompact } from '../../utils/dateHelpers'
 
 function AllPaymentsHistory() {
   // Filter states
@@ -105,33 +106,6 @@ function AllPaymentsHistory() {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0)
   }
 
-  // const formatDate = (date) => {
-  //   if (!date) return '-'
-  //   return new Date(date).toLocaleDateString('en-US')
-  // }
-  const formatDate = (date) => {
-    if (!date) return '-'
-
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',        // respeta la hora del ...Z
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    }).format(new Date(date))
-  }
-
-
-
-
-  const formatDateTime = (date) => {
-    if (!date) return '-'
-    return new Date(date).toLocaleString('en-US', {
-      dateStyle: 'short',
-      timeStyle: 'short'
-    })
-  }
 
   const getStatusBadge = (status) => {
     const badges = {
@@ -323,7 +297,7 @@ function AllPaymentsHistory() {
                         <br />
                         <small className="text-muted">{h.account_name}</small>
                       </td>
-                      <td>{formatDate(h.payment_date)}</td>
+                      <td>{formatDateTime(h.payment_date)}</td>
                       <td>{h.payment_method}</td>
                       <td>{h.reference_number || '-'}</td>
                       <td className="text-end font-monospace">{formatCurrency(h.amount_received)}</td>
@@ -345,7 +319,7 @@ function AllPaymentsHistory() {
                       </td>
                       <td>{h.created_by || '-'}</td>
                       <td>
-                        <small>{formatDateTime(h.created_at)}</small>
+                        <small>{formatDateTimeCompact(h.created_at)}</small>
                       </td>
                       <td>
                         <Link

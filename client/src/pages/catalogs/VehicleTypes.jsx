@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
+import { formatDateTime } from '../../utils/dateHelpers'
 
 function VehicleTypes() {
   const [items, setItems] = useState([])
@@ -57,23 +58,7 @@ function VehicleTypes() {
     i.name?.toLowerCase().includes(search.toLowerCase()) ||
     i.code?.toLowerCase().includes(search.toLowerCase())
   )
-
-  const formatDate = (date) => {
-    if (!date) return '-'
-
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',        // respeta la hora del ...Z
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    }).format(new Date(date))
-  }
-
-
-
-  // Iconos según tipo de vehículo
+// Iconos según tipo de vehículo
   const getVehicleIcon = (code) => {
     const icons = {
       'TRACTOR': 'bi-truck',
@@ -186,13 +171,13 @@ function VehicleTypes() {
                         )}
                       </td>
                       <td>
-                        <small className="text-muted d-block">{formatDate(item.created_at)}</small>
+                        <small className="text-muted d-block">{formatDateTime(item.created_at)}</small>
                         {item.created_by_username && (
                           <small className="text-muted">by {item.created_by_username}</small>
                         )}
                       </td>
                       <td>
-                        <small className="text-muted d-block">{formatDate(item.updated_at)}</small>
+                        <small className="text-muted d-block">{formatDateTime(item.updated_at)}</small>
                         {item.edited_by_username && (
                           <small className="text-muted">by {item.edited_by_username}</small>
                         )}

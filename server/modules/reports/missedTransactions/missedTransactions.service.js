@@ -5,6 +5,7 @@ import ExcelJS from 'exceljs'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
+import { formatDateTime as _formatDateTime, formatGeneratedTimestamp } from '../../../utils/dateHelpers.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -135,17 +136,7 @@ export const generatePdf = async (filters = {}) => {
     return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val)
   }
 
-  const formatDateTime = (date) => {
-    if (!date) return '-'
-    return new Date(date).toLocaleString('en-US', {
-      timeZone: 'UTC',
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    })
-  }
+  const formatDateTime = _formatDateTime
 
   const formatInt = (val) => {
     if (val === null || val === undefined) return '0'
@@ -222,7 +213,7 @@ export const generatePdf = async (filters = {}) => {
           .text('Missed Transactions Report', marginLeft + 60, headerTop + 20, { width: contentWidth - 180, align: 'center' })
 
         doc.fontSize(7).fillColor(textGray).font('Helvetica')
-          .text(`Generated: ${new Date().toLocaleString('en-US')}`, rightX, headerTop + 5, { width: rightColW, align: 'right' })
+          .text(`Generated: ${formatGeneratedTimestamp()}`, rightX, headerTop + 5, { width: rightColW, align: 'right' })
           .text(`Filters: ${filterText}`, rightX, headerTop + 15, { width: rightColW, align: 'right' })
 
         doc.moveTo(marginLeft, 48).lineTo(pageWidth - marginRight, 48).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
@@ -254,7 +245,7 @@ export const generatePdf = async (filters = {}) => {
       // #, ID, UUID, Date/Time, Weight lb, Eje1, Eje2, Eje3, Total, Operator, Status, Reason
       const colWidths = [25, 35, 110, 70, 50, 45, 45, 45, 50, 75, 50, 70]
       const tableWidth = colWidths.reduce((a, b) => a + b, 0)
-      const headers = ['#', 'ID', 'UUID', 'Date/Time', 'Weight', 'Eje 1', 'Eje 2', 'Eje 3', 'Total', 'Operator', 'Status', 'Reason']
+      const headers = ['#', 'ID', 'UUID', 'Date/Time', 'Weight', 'Axle 1', 'Axle 2', 'Axle 3', 'Total', 'Operator', 'Status', 'Reason']
       const tableHeaderHeight = 14
 
       const drawTableHeader = (y) => {
@@ -388,7 +379,7 @@ export const generateExcel = async (filters = {}) => {
   const { data, totals } = await getData(filters)
   const settings = await getReportSettings()
 
-  const formatDate = (date) => date ? new Date(date).toLocaleString('en-US') : '-'
+  const formatDate = _formatDateTime
 
   const workbook = new ExcelJS.Workbook()
   workbook.creator = settings.companyName
@@ -415,7 +406,7 @@ export const generateExcel = async (filters = {}) => {
   ].filter(Boolean).join(' | ') || 'All records'
 
   worksheet.mergeCells('A3:L3')
-  worksheet.getCell('A3').value = `Generated: ${new Date().toLocaleString('en-US')} | ${filterText}`
+  worksheet.getCell('A3').value = `Generated: ${formatGeneratedTimestamp()} | ${filterText}`
   worksheet.getCell('A3').font = { size: 9, italic: true, color: { argb: '666666' } }
   worksheet.getCell('A3').alignment = { horizontal: 'center' }
 
@@ -446,7 +437,7 @@ export const generateExcel = async (filters = {}) => {
   const colWidths = [8, 10, 32, 20, 12, 10, 10, 10, 12, 18, 12, 20]
   colWidths.forEach((w, i) => worksheet.getColumn(i + 1).width = w)
 
-  const headers = ['#', 'ID', 'UUID', 'Date/Time', 'Weight', 'Eje 1', 'Eje 2', 'Eje 3', 'Total', 'Operator', 'Status', 'Reason']
+  const headers = ['#', 'ID', 'UUID', 'Date/Time', 'Weight', 'Axle 1', 'Axle 2', 'Axle 3', 'Total', 'Operator', 'Status', 'Reason']
   headers.forEach((h, i) => {
     const cell = worksheet.getCell(tableStartRow, i + 1)
     cell.value = h

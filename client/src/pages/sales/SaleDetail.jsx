@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
+import { formatDateTime } from '../../utils/dateHelpers'
 import ReassignCustomerModal from './ReassignCustomerModal'
 import ReassignmentHistoryModal from './ReassignmentHistoryModal'
 
@@ -92,19 +93,7 @@ function SaleDetail() {
   }
 
   const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0)
-  // const formatDate = (d) => d ? new Date(d).toLocaleString() : '-'
-  const formatDate = (date) => {
-    if (!date) return '-'
-
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',        // respeta la hora del ...Z
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    }).format(new Date(date))
-  }
+  const formatDate = formatDateTime
 
 
 

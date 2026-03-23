@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
+import { formatDateTime, todayDateString, pastDateString } from '../../utils/dateHelpers'
 
 function MissedTransactions() {
   const [data, setData] = useState([])
@@ -13,8 +14,8 @@ function MissedTransactions() {
   const [pageSize, setPageSize] = useState(25)
 
   // Filtros - default: hoy
-  const today = new Date().toISOString().split('T')[0]
-  const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  const today = todayDateString()
+  const lastWeek = pastDateString(7)
 
   const [filters, setFilters] = useState({
     date_from: lastWeek,
@@ -95,17 +96,7 @@ function MissedTransactions() {
     return new Intl.NumberFormat('en-US').format(Math.round(Number(val) || 0))
   }
 
-  const formatDate = (date) => {
-    if (!date) return '-'
-    return new Date(date).toLocaleString('en-US', {
-      timeZone: 'UTC',
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    })
-  }
+  const formatDate = formatDateTime
 
   // Paginación local
   const totalRows = data.length
@@ -247,9 +238,9 @@ function MissedTransactions() {
                     <th>UUID</th>
                     <th>Date/Time</th>
                     <th className="text-end">Weight</th>
-                    <th className="text-end">Eje 1</th>
-                    <th className="text-end">Eje 2</th>
-                    <th className="text-end">Eje 3</th>
+                    <th className="text-end">Axle 1</th>
+                    <th className="text-end">Axle 2</th>
+                    <th className="text-end">Axle 3</th>
                     <th className="text-end">Total</th>
                     <th>Operator</th>
                     <th className="text-center">Status</th>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
+import { formatDateTime, todayDateString, pastDateString } from '../../utils/dateHelpers'
 
 function SalesReport() {
   const [data, setData] = useState([])
@@ -14,8 +15,8 @@ function SalesReport() {
   const [pageSize, setPageSize] = useState(25)
 
   // Filtros - default: últimos 7 días
-  const today = new Date().toISOString().split('T')[0]
-  const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  const today = todayDateString()
+  const lastWeek = pastDateString(7)
 
   const [filters, setFilters] = useState({
     date_from: lastWeek,
@@ -120,12 +121,7 @@ function SalesReport() {
     return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(val)
   }
 
-  const formatDate = (date) => {
-    if (!date) return '-'
-    return new Date(date).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-    })
-  }
+  const formatDate = formatDateTime
 
   return (
     <div className="container-fluid p-4">

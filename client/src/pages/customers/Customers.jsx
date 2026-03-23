@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
+import { formatDateTime } from '../../utils/dateHelpers'
 
 function Customers() {
   const [page, setPage] = useState(1)
@@ -66,27 +67,6 @@ function Customers() {
 
   const formatCurrency = (val) => val ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val) : '-'
 
-  // const formatDate = (dateString) => {
-  //   if (!dateString) return '-'
-  //   return new Date(dateString).toLocaleDateString('en-US', {
-  //     year: 'numeric',
-  //     month: 'short',
-  //     day: 'numeric'
-  //   })
-  // }
-
-  const formatDate = (date) => {
-    if (!date) return '-'
-
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',        // respeta la hora del ...Z
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    }).format(new Date(date))
-  }
 
 
   return (
@@ -163,13 +143,13 @@ function Customers() {
                       <td className="text-end">{item.has_credit ? formatCurrency(item.credit_limit) : '-'}</td>
                       <td className="text-end">{item.has_credit ? formatCurrency(item.current_balance) : '-'}</td>
                       <td>
-                        <small className="text-muted d-block">{formatDate(item.created_at)}</small>
+                        <small className="text-muted d-block">{formatDateTime(item.created_at)}</small>
                         {item.created_by_username && (
                           <small className="text-muted">by {item.created_by_username}</small>
                         )}
                       </td>
                       <td>
-                        <small className="text-muted d-block">{formatDate(item.updated_at)}</small>
+                        <small className="text-muted d-block">{formatDateTime(item.updated_at)}</small>
                         {item.edited_by_username && (
                           <small className="text-muted">by {item.edited_by_username}</small>
                         )}

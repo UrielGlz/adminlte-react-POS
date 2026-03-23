@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
+import { formatDateTime } from '../../utils/dateHelpers'
 
 function PaymentMethodForm() {
   const { id } = useParams()
@@ -84,35 +85,8 @@ function PaymentMethodForm() {
     } catch (error) {
       Swal.fire('Error', error.response?.data?.message || 'Could not save', 'error')
     } finally { setSaving(false) }
-  }
-
-  // const formatDate = (dateString) => {
-  //   if (!dateString) return '-'
-  //   return new Date(dateString).toLocaleString('en-US', {
-  //     year: 'numeric',
-  //     month: 'short',
-  //     day: 'numeric',
-  //     hour: '2-digit',
-  //     minute: '2-digit'
-  //   })
-  // }
-
-  const formatDate = (date) => {
-    if (!date) return '-'
-
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',        // respeta la hora del ...Z
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    }).format(new Date(date))
-  }
-
-
-
-  if (loading) {
+  }  // }
+if (loading) {
     return (
       <div className="container-fluid p-4 text-center">
         <div className="spinner-border text-primary"></div>
@@ -315,14 +289,14 @@ function PaymentMethodForm() {
                 <div className="row">
                   <div className="col-6">
                     <small className="text-muted d-block">Created</small>
-                    <strong>{formatDate(auditInfo.created_at)}</strong>
+                    <strong>{formatDateTime(auditInfo.created_at)}</strong>
                     {auditInfo.created_by_username && (
                       <small className="text-muted d-block">by {auditInfo.created_by_username}</small>
                     )}
                   </div>
                   <div className="col-6">
                     <small className="text-muted d-block">Last Modified</small>
-                    <strong>{formatDate(auditInfo.updated_at)}</strong>
+                    <strong>{formatDateTime(auditInfo.updated_at)}</strong>
                     {auditInfo.edited_by_username && (
                       <small className="text-muted d-block">by {auditInfo.edited_by_username}</small>
                     )}

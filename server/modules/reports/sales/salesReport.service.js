@@ -5,6 +5,7 @@ import ExcelJS from 'exceljs'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
+import { formatDateTime, formatGeneratedTimestamp } from '../../../utils/dateHelpers.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -219,13 +220,7 @@ export const generatePdf = async (filters = {}) => {
     return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val)
   }
 
-  const formatDate = (date) => {
-    if (!date) return '-'
-    return new Date(date).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-    })
-  }
-
+  const formatDate = formatDateTime
 
   const logoPath = getLogoPath(settings.companyLogo)
 
@@ -316,7 +311,7 @@ export const generatePdf = async (filters = {}) => {
           .text('Sales Report', marginLeft + colWidth, headerTop + 22, { width: colWidth, align: 'center' })
 
         doc.fontSize(7).fillColor(textGray).font('Helvetica')
-          .text(`Generated: ${new Date().toLocaleString('en-US')}`, marginLeft + colWidth * 2, headerTop + 8, { width: colWidth - marginRight, align: 'right' })
+          .text(`Generated: ${formatGeneratedTimestamp()}`, marginLeft + colWidth * 2, headerTop + 8, { width: colWidth - marginRight, align: 'right' })
           .text(`Filters: ${filterText}`, marginLeft + colWidth * 2, headerTop + 18, { width: colWidth - marginRight, align: 'right' })
 
         doc.moveTo(marginLeft, 70).lineTo(pageWidth - marginRight, 70).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
@@ -537,12 +532,7 @@ export const generateExcel = async (filters = {}) => {
   const { data, totals, payment_summary } = await getData(filters)
   const settings = await getReportSettings()
 
-  const formatDate = (date) => {
-    if (!date) return '-'
-    return new Date(date).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-    })
-  }
+  const formatDate = formatDateTime
 
   const workbook = new ExcelJS.Workbook()
   workbook.creator = settings.companyName
@@ -569,7 +559,7 @@ export const generateExcel = async (filters = {}) => {
   ].filter(Boolean).join(' | ') || 'All records'
 
   worksheet.mergeCells('A3:O3')
-  worksheet.getCell('A3').value = `Generated: ${new Date().toLocaleString('en-US')} | ${filterText}`
+  worksheet.getCell('A3').value = `Generated: ${formatGeneratedTimestamp()} | ${filterText}`
   worksheet.getCell('A3').font = { size: 9, italic: true, color: { argb: '666666' } }
   worksheet.getCell('A3').alignment = { horizontal: 'center' }
 

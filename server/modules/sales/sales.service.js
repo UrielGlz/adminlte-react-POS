@@ -2,7 +2,7 @@ import { query } from '../../config/database.js'
 import { NotFoundError, ConflictError } from '../../utils/errors.js'
 
 export const getAll = async (filters = {}) => {
-  const { date_from, date_to, status_id, is_reweigh } = filters
+  const { date_from, date_to, status_id, is_reweigh, ticket_number } = filters
 
   let sql = `
     SELECT s.sale_id, s.sale_uid, s.receipt_number, s.sale_status_id, s.subtotal, s.discount_total,
@@ -40,6 +40,10 @@ export const getAll = async (filters = {}) => {
     } else {
       sql += ` AND s.reweigh_of_sale_id IS NULL`
     }
+  }
+  if (ticket_number) {
+    sql += ` AND t.ticket_number LIKE ?`
+    params.push(`%${ticket_number}%`)
   }
 
   sql += ` ORDER BY s.created_at DESC LIMIT 500`

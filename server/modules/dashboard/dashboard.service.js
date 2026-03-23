@@ -1,20 +1,14 @@
 import { query } from '../../config/database.js'
+import { todayDateString, formatDateOnly } from '../../utils/dateHelpers.js'
 
 /**
  * Obtener resumen general del día
  */
 export const getTodaySummary = async () => {
-    const TZ = 'America/Matamoros' // Reynosa
-    const today = new Intl.DateTimeFormat('en-CA', {
-        timeZone: TZ,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-    }).format(new Date()) // => 'YYYY-MM-DD'
-
+    const today = todayDateString()
 
     const result = await query(`
-    SELECT 
+    SELECT
       COUNT(*) as total_transactions,
       SUM(CASE WHEN sale_status_id = 2 THEN total ELSE 0 END) as total_sales,
       SUM(CASE WHEN sale_status_id = 2 THEN 1 ELSE 0 END) as completed_count,
@@ -82,15 +76,7 @@ export const getSalesByCategory = async (dateFrom, dateTo) => {
  * Ventas por hora del día (para gráfica)
  */
 export const getSalesByHour = async (date = null) => {
-    //const targetDate = date || new Date().toISOString().split('T')[0]
-
-    const TZ = 'America/Matamoros' // Reynosa
-    const targetDate = new Intl.DateTimeFormat('en-CA', {
-        timeZone: TZ,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-    }).format(new Date()) // => 'YYYY-MM-DD'
+    const targetDate = date || todayDateString()
 
     const result = await query(`
     SELECT 
@@ -136,7 +122,7 @@ export const getSalesTrend = async (days = 7) => {
 
     return result.map(r => ({
         ...r,
-        date: new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        date: formatDateOnly(r.date),
         total_sales: parseFloat(r.total_sales)
     }))
 }
@@ -280,7 +266,7 @@ export const getTicketsTrend = async (days = 7) => {
 
     return result.map(r => ({
         ...r,
-        date: new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        date: formatDateOnly(r.date)
     }))
 }
 

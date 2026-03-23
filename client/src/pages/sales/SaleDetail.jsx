@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import api from '../../services/api'
 import Swal from 'sweetalert2'
+import ReassignCustomerModal from './ReassignCustomerModal'
+import ReassignmentHistoryModal from './ReassignmentHistoryModal'
 
 function SaleDetail() {
   const { id } = useParams()
@@ -9,6 +11,9 @@ function SaleDetail() {
   const [sale, setSale] = useState(null)
   const [loading, setLoading] = useState(true)
   const [paymentMethods, setPaymentMethods] = useState([])
+  const [showReassignModal, setShowReassignModal] = useState(false)
+  const [showHistoryModal, setShowHistoryModal] = useState(false)
+  const [reassignmentCount, setReassignmentCount] = useState(0)
 
   useEffect(() => {
     fetchSale()
@@ -19,8 +24,16 @@ function SaleDetail() {
     try {
       setLoading(true)
       const response = await api.get(`/sales/${id}`)
-      setSale(response.data.data)
-      console.log(response.data.data)
+      const saleData = response.data.data
+      setSale(saleData)
+
+      // Load reassignment history count
+      if (saleData?.sale_uid) {
+        try {
+          const histRes = await api.get(`/sales/${saleData.sale_uid}/reassignment-history`)
+          setReassignmentCount((histRes.data.data || []).length)
+        } catch { setReassignmentCount(0) }
+      }
     } catch (error) {
       Swal.fire('Error', 'Could not load sale', 'error')
       navigate('/sales')
@@ -123,11 +136,21 @@ function SaleDetail() {
               <button className="btn btn-outline-primary me-2" onClick={handleChangePaymentMethod}>
                 <i className="bi bi-credit-card me-1"></i>Change Payment
               </button>
+              <button className="btn btn-outline-warning me-2" onClick={() => setShowReassignModal(true)}>
+                <i className="bi bi-arrow-left-right me-1"></i>Change Customer
+              </button>
               <button className="btn btn-outline-danger me-2" onClick={handleCancel}>
                 <i className="bi bi-x-circle me-1"></i>Cancel Sale
               </button>
             </>
           )}
+          {/* SI SE REQUIERE VER EL HISTORIAL DE CAMBIOS EN EL TICKET DESCOMENTAR ESTA PARTE  */}
+            {/*          
+          {reassignmentCount > 0 && (
+            <button className="btn btn-outline-secondary me-2" onClick={() => setShowHistoryModal(true)}>
+              <i className="bi bi-clock-history me-1"></i>History ({reassignmentCount})
+            </button>
+          )} */}
           <Link to="/sales" className="btn btn-outline-secondary">
             <i className="bi bi-arrow-left me-1"></i>Back
           </Link>
@@ -286,6 +309,23 @@ function SaleDetail() {
           </div>
         </div>
       </div>
+
+      {/* Reassign Customer Modal */}
+      {showReassignModal && sale && (
+        <ReassignCustomerModal
+          sale={sale}
+          onClose={() => setShowReassignModal(false)}
+          onSuccess={() => { setShowReassignModal(false); fetchSale() }}
+        />
+      )}
+
+      {/* Reassignment History Modal */}
+      {showHistoryModal && sale?.sale_uid && (
+        <ReassignmentHistoryModal
+          saleUid={sale.sale_uid}
+          onClose={() => setShowHistoryModal(false)}
+        />
+      )}
     </div>
   )
 }

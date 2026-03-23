@@ -1,0 +1,265 @@
+import { useState, useEffect } from 'react'
+import api from '../../services/api'
+import Swal from 'sweetalert2'
+
+function ReassignCustomerModal({ sale, onClose, onSuccess }) {
+  const [customers, setCustomers] = useState([])
+  const [reasons, setReasons] = useState([])
+  const [search, setSearch] = useState('')
+  const [selectedCustomer, setSelectedCustomer] = useState(null)
+  const [reasonId, setReasonId] = useState('')
+  const [notes, setNotes] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [loadingData, setLoadingData] = useState(true)
+
+  const formatCurrency = (val) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0)
+
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  const loadData = async () => {
+    try {
+      setLoadingData(true)
+      const [custRes, reasonRes] = await Promise.all([
+        api.get('/ar/customers'),
+        api.get('/sales/reassignment-reasons')
+      ])
+      setCustomers(custRes.data.data || [])
+      setReasons(reasonRes.data.data || [])
+    } catch (err) {
+      console.error('Error loading modal data:', err)
+    } finally {
+      setLoadingData(false)
+    }
+  }
+
+  const currentAccountNumber = sale?.driver_info?.account_number
+  const saleTotal = parseFloat(sale?.total) || 0
+
+  const filtered = customers.filter(c => {
+    if (c.account_number === currentAccountNumber) return false
+    if (!search) return true
+    const s = search.toLowerCase()
+    return (
+      c.account_name?.toLowerCase().includes(s) ||
+      c.account_number?.toLowerCase().includes(s)
+    )
+  })
+
+  const selectCustomer = (c) => {
+    setSelectedCustomer(c)
+    setSearch('')
+  }
+
+  const canSubmit =
+    selectedCustomer &&
+    reasonId &&
+    !submitting &&
+    parseFloat(selectedCustomer.available_credit) >= saleTotal &&
+    !selectedCustomer.is_suspended
+
+  const handleSubmit = async () => {
+    if (!selectedCustomer) return
+    if (!reasonId) {
+      Swal.fire('Validation', 'A reassignment reason is required.', 'warning')
+      return
+    }
+
+    const confirm = await Swal.fire({
+      title: 'Confirm Reassignment',
+      html: `
+        <p class="mb-1">Move ticket <b>#${sale.ticket_number || sale.sale_id}</b> (${formatCurrency(saleTotal)})</p>
+        <p class="mb-1">From: <b>${currentAccountNumber}</b></p>
+        <p class="mb-0">To: <b>${selectedCustomer.account_number} / ${selectedCustomer.account_name}</b></p>
+      `,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, reassign',
+      confirmButtonColor: '#0d6efd'
+    })
+
+    if (!confirm.isConfirmed) return
+
+    try {
+      setSubmitting(true)
+      const res = await api.post(`/sales/${sale.sale_uid}/reassign-customer`, {
+        newCustomerId: selectedCustomer.id_customer,
+        reassignmentReasonId: Number(reasonId),
+        reasonNotes: notes || null
+      })
+      Swal.fire({
+        icon: 'success',
+        title: 'Customer reassignment completed successfully.',
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 3000
+      })
+      onSuccess()
+    } catch (err) {
+      Swal.fire('Error', err.response?.data?.message || 'Could not reassign customer.', 'error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1055 }}>
+        <div className="modal-dialog modal-lg modal-dialog-centered">
+          <div className="modal-content">
+            <div className="modal-header bg-primary text-white">
+              <h5 className="modal-title"><i className="bi bi-arrow-left-right me-2"></i>Change Customer</h5>
+              <button type="button" className="btn-close btn-close-white" onClick={onClose} disabled={submitting}></button>
+            </div>
+            <div className="modal-body">
+              {loadingData ? (
+                <div className="text-center py-4"><div className="spinner-border text-primary"></div></div>
+              ) : (
+                <>
+                  {/* Current info (read-only) */}
+                  <div className="row g-3 mb-3">
+                    <div className="col-md-4">
+                      <label className="form-label small fw-bold">Ticket</label>
+                      <input className="form-control form-control-sm" readOnly
+                        value={`#${sale.ticket_number || sale.sale_id}`} />
+                    </div>
+                    <div className="col-md-4">
+                      <label className="form-label small fw-bold">Current Customer</label>
+                      <input className="form-control form-control-sm" readOnly
+                        value={`${currentAccountNumber || '-'} / ${sale.driver_info?.account_name || '-'}`} />
+                    </div>
+                    <div className="col-md-4">
+                      <label className="form-label small fw-bold">Amount to Move</label>
+                      <input className="form-control form-control-sm fw-bold text-success" readOnly
+                        value={formatCurrency(saleTotal)} />
+                    </div>
+                  </div>
+
+                  <hr />
+
+                  {/* New customer selector */}
+                  <label className="form-label small fw-bold">New Customer <span className="text-danger">*</span></label>
+
+                  {selectedCustomer ? (
+                    <div className="alert alert-info py-2 d-flex justify-content-between align-items-center mb-2">
+                      <div>
+                        <strong>{selectedCustomer.account_number}</strong> — {selectedCustomer.account_name}
+                        <span className="ms-3 badge bg-secondary">{selectedCustomer.credit_type}</span>
+                        <span className="ms-2">Available: <b>{formatCurrency(selectedCustomer.available_credit)}</b></span>
+                      </div>
+                      <button className="btn btn-sm btn-outline-secondary" onClick={() => setSelectedCustomer(null)}>
+                        <i className="bi bi-x"></i> Change
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="input-group input-group-sm mb-2">
+                        <span className="input-group-text"><i className="bi bi-search"></i></span>
+                        <input type="text" className="form-control" placeholder="Search by name or account number..."
+                          value={search} onChange={e => setSearch(e.target.value)} />
+                        {search && (
+                          <button className="btn btn-outline-secondary" onClick={() => setSearch('')}>
+                            <i className="bi bi-x"></i>
+                          </button>
+                        )}
+                      </div>
+                      <div className="border rounded" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                        {filtered.length === 0 ? (
+                          <div className="text-center text-muted py-3 small">No customers found</div>
+                        ) : (
+                          <table className="table table-sm table-hover mb-0" style={{ fontSize: '0.8rem' }}>
+                            <thead className="table-light sticky-top">
+                              <tr>
+                                <th>Account</th>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th className="text-end">Available</th>
+                                <th></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filtered.slice(0, 50).map(c => {
+                                const hasEnough = parseFloat(c.available_credit) >= saleTotal
+                                return (
+                                  <tr key={c.id_customer}
+                                    className={c.is_suspended ? 'table-warning' : (!hasEnough ? 'table-danger' : '')}
+                                    style={{ cursor: (c.is_suspended || !hasEnough) ? 'not-allowed' : 'pointer' }}
+                                    onClick={() => { if (!c.is_suspended && hasEnough) selectCustomer(c) }}>
+                                    <td><code>{c.account_number}</code></td>
+                                    <td>{c.account_name}</td>
+                                    <td><span className="badge bg-secondary">{c.credit_type}</span></td>
+                                    <td className={`text-end fw-bold ${hasEnough ? 'text-success' : 'text-danger'}`}>
+                                      {formatCurrency(c.available_credit)}
+                                    </td>
+                                    <td className="text-center">
+                                      {c.is_suspended && <span className="badge bg-warning text-dark">Suspended</span>}
+                                      {!c.is_suspended && !hasEnough && <span className="badge bg-danger">Insufficient</span>}
+                                      {!c.is_suspended && hasEnough && <i className="bi bi-check-circle text-success"></i>}
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Validation messages */}
+                  {selectedCustomer && selectedCustomer.is_suspended && (
+                    <div className="alert alert-warning py-1 mt-2 small mb-0">
+                      <i className="bi bi-exclamation-triangle me-1"></i>
+                      The selected customer is suspended and cannot receive new charges.
+                    </div>
+                  )}
+                  {selectedCustomer && parseFloat(selectedCustomer.available_credit) < saleTotal && !selectedCustomer.is_suspended && (
+                    <div className="alert alert-danger py-1 mt-2 small mb-0">
+                      <i className="bi bi-x-circle me-1"></i>
+                      Insufficient available credit. Selected customer has {formatCurrency(selectedCustomer.available_credit)} available, but this ticket requires {formatCurrency(saleTotal)}.
+                    </div>
+                  )}
+
+                  <hr />
+
+                  {/* Reason */}
+                  <div className="row g-3">
+                    <div className="col-md-6">
+                      <label className="form-label small fw-bold">Reason <span className="text-danger">*</span></label>
+                      <select className="form-select form-select-sm" value={reasonId} onChange={e => setReasonId(e.target.value)}>
+                        <option value="">-- Select reason --</option>
+                        {reasons.map(r => (
+                          <option key={r.reassignment_reason_id} value={r.reassignment_reason_id}>{r.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label small fw-bold">Notes <span className="text-muted">(optional)</span></label>
+                      <textarea className="form-control form-control-sm" rows="2" maxLength={500}
+                        value={notes} onChange={e => setNotes(e.target.value)}
+                        placeholder="Additional details..." />
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary btn-sm" onClick={onClose} disabled={submitting}>Cancel</button>
+              <button className="btn btn-primary btn-sm" onClick={handleSubmit} disabled={!canSubmit}>
+                {submitting
+                  ? <><span className="spinner-border spinner-border-sm me-1"></span>Processing...</>
+                  : <><i className="bi bi-check-circle me-1"></i>Reassign Customer</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="modal-backdrop fade show" style={{ zIndex: 1050 }}></div>
+    </>
+  )
+}
+
+export default ReassignCustomerModal

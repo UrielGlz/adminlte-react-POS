@@ -27,3 +27,4 @@ Thumbs.db
 # Cache
 .cache/
 .parcel-cache/
+claude_ticket_customer_reassignment_prompt.md

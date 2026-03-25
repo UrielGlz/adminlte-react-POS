@@ -1,5 +1,6 @@
 import { query } from '../../../config/database.js'
 import { getReportSettings } from '../reports.service.js'
+import { formatDateTime } from '../../../utils/dateHelpers.js'
 import PDFDocument from 'pdfkit'
 import ExcelJS from 'exceljs'
 import path from 'path'
@@ -185,9 +186,7 @@ export const generateDynamicExcel = async (code, filterValues = {}) => {
         cell.value = parseFloat(value)
         cell.numFmt = '#,##0.00'
       } else if (col.data_type === 'date' && value) {
-        cell.value = new Intl.DateTimeFormat('en-US', {
-          timeZone: 'UTC', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true
-        }).format(new Date(value))
+        cell.value = formatDateTime(value)
       } else {
         cell.value = value || '-'
       }

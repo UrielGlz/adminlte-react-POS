@@ -26,11 +26,17 @@ function Sales() {
     try {
       setLoading(true)
       const params = new URLSearchParams()
-      if (filters.date_from) params.append('date_from', filters.date_from)
-      if (filters.date_to) params.append('date_to', filters.date_to)
-      if (filters.status_id) params.append('status_id', filters.status_id)
-      if (filters.is_reweigh !== '') params.append('is_reweigh', filters.is_reweigh)
-      if (filters.ticket_number) params.append('ticket_number', filters.ticket_number)
+      const trimmedTicket = filters.ticket_number.trim()
+
+      if (trimmedTicket) {
+        // Ticket search is priority — ignore all other filters
+        params.append('ticket_number', trimmedTicket)
+      } else {
+        if (filters.date_from) params.append('date_from', filters.date_from)
+        if (filters.date_to) params.append('date_to', filters.date_to)
+        if (filters.status_id) params.append('status_id', filters.status_id)
+        if (filters.is_reweigh !== '') params.append('is_reweigh', filters.is_reweigh)
+      }
 
       const [salesRes, summaryRes] = await Promise.all([
         api.get(`/sales?${params.toString()}`),

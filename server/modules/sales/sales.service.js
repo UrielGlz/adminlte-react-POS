@@ -22,28 +22,32 @@ export const getAll = async (filters = {}) => {
   `
   const params = []
 
-  if (date_from) {
-    sql += ` AND DATE(s.created_at) >= ?`
-    params.push(date_from)
-  }
-  if (date_to) {
-    sql += ` AND DATE(s.created_at) <= ?`
-    params.push(date_to)
-  }
-  if (status_id) {
-    sql += ` AND s.sale_status_id = ?`
-    params.push(status_id)
-  }
-  if (is_reweigh !== undefined) {
-    if (String(is_reweigh) === '1') {
-      sql += ` AND s.reweigh_of_sale_id IS NOT NULL`
-    } else {
-      sql += ` AND s.reweigh_of_sale_id IS NULL`
-    }
-  }
-  if (ticket_number) {
+  const trimmedTicket = ticket_number ? String(ticket_number).trim() : ''
+
+  if (trimmedTicket) {
+    // Ticket search is priority — skip date and other filters
     sql += ` AND t.ticket_number LIKE ?`
-    params.push(`%${ticket_number}%`)
+    params.push(`%${trimmedTicket}%`)
+  } else {
+    if (date_from) {
+      sql += ` AND DATE(s.created_at) >= ?`
+      params.push(date_from)
+    }
+    if (date_to) {
+      sql += ` AND DATE(s.created_at) <= ?`
+      params.push(date_to)
+    }
+    if (status_id) {
+      sql += ` AND s.sale_status_id = ?`
+      params.push(status_id)
+    }
+    if (is_reweigh !== undefined) {
+      if (String(is_reweigh) === '1') {
+        sql += ` AND s.reweigh_of_sale_id IS NOT NULL`
+      } else {
+        sql += ` AND s.reweigh_of_sale_id IS NULL`
+      }
+    }
   }
 
   sql += ` ORDER BY s.created_at DESC LIMIT 500`
@@ -139,27 +143,35 @@ export const cancelSale = async (saleId, reasonId) => {
   return await getById(saleId)
 }
 
-export const getSummary = async (dateFrom, dateTo) => {
+export const getSummary = async (dateFrom, dateTo, ticketNumber) => {
   const params = []
-  let dateFilter = ''
+  let extraFilter = ''
+  const trimmedTicket = ticketNumber ? String(ticketNumber).trim() : ''
 
-  if (dateFrom) {
-    dateFilter += ' AND DATE(s.created_at) >= ?'
-    params.push(dateFrom)
-  }
-  if (dateTo) {
-    dateFilter += ' AND DATE(s.created_at) <= ?'
-    params.push(dateTo)
+  if (trimmedTicket) {
+    // Ticket search — no date filter, join tickets table
+    extraFilter = ' AND t.ticket_number LIKE ?'
+    params.push(`%${trimmedTicket}%`)
+  } else {
+    if (dateFrom) {
+      extraFilter += ' AND DATE(s.created_at) >= ?'
+      params.push(dateFrom)
+    }
+    if (dateTo) {
+      extraFilter += ' AND DATE(s.created_at) <= ?'
+      params.push(dateTo)
+    }
   }
 
   const summary = await query(`
-    SELECT 
+    SELECT
       COUNT(*) as total_transactions,
       SUM(CASE WHEN s.sale_status_id != 3 THEN s.total ELSE 0 END) as total_sales,
       SUM(CASE WHEN s.is_reweigh = 1 AND s.sale_status_id != 3 THEN 1 ELSE 0 END) as total_reweighs,
       SUM(CASE WHEN s.sale_status_id = 3 THEN 1 ELSE 0 END) as total_cancelled
     FROM sales s
-    WHERE 1=1 ${dateFilter}
+    ${trimmedTicket ? 'LEFT JOIN tickets t ON s.sale_uid = t.sale_uid' : ''}
+    WHERE 1=1 ${extraFilter}
   `, params)
 
   return summary[0]

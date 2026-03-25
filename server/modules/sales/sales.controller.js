@@ -41,8 +41,8 @@ export const cancelSale = async (req, res, next) => {
 
 export const getSummary = async (req, res, next) => {
   try {
-    const { date_from, date_to } = req.query
-    const summary = await salesService.getSummary(date_from, date_to)
+    const { date_from, date_to, ticket_number } = req.query
+    const summary = await salesService.getSummary(date_from, date_to, ticket_number)
     success(res, summary)
   } catch (error) { next(error) }
 }

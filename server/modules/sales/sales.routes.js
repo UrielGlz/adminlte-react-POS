@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import salesController from './sales.controller.js'
 import reassignmentController from './reassignment.controller.js'
+import manualTicketController from './manualTicket.controller.js'
 import { authenticate, requirePermission } from '../../middleware/auth.js'
 
 const router = Router()
@@ -10,6 +11,10 @@ router.get('/:saleId/ticket.pdf', requirePermission('sales.read'), salesControll
 router.get('/', requirePermission('sales.read'), salesController.getAll)
 
 router.get('/summary', requirePermission('sales.read'), salesController.getSummary)
+
+// Manual ticket routes (must be before /:id to avoid conflicts)
+router.get('/manual/catalogs', requirePermission('manual_ticket.write'), manualTicketController.getFormCatalogs)
+router.post('/manual', requirePermission('manual_ticket.write'), manualTicketController.createManualTicket)
 
 // Reassignment routes (must be before /:id to avoid conflicts)
 router.get('/reassignment-reasons', requirePermission('sales.read'), reassignmentController.getReasons)

@@ -25,6 +25,7 @@ import Customers from './pages/customers/Customers'
 import CustomerForm from './pages/customers/CustomerForm'
 import Sales from './pages/sales/Sales'
 import SaleDetail from './pages/sales/SaleDetail'
+import ManualTicket from './pages/sales/ManualTicket'
 import LicenseStates from './pages/catalogs/LicenseStates'
 import LicenseStateForm from './pages/catalogs/LicenseStateForm'
 import DriverProducts from './pages/catalogs/DriverProducts'
@@ -103,6 +104,7 @@ function App() {
           <Route path="customers/:id" element={<CustomerForm />} />
 
           <Route path="sales" element={<Sales />} />
+          <Route path="sales/manual" element={<ManualTicket />} />
           <Route path="sales/:id" element={<SaleDetail />} />
 
           <Route path="/reports" element={<ReportsIndex />} />

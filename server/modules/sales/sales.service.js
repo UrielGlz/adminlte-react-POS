@@ -3,10 +3,10 @@ import { NotFoundError, ConflictError } from '../../utils/errors.js'
 
 export const getAll = async (filters = {}) => {
   const { date_from, date_to, status_id, is_reweigh, ticket_number } = filters
-
+  //TODO UG s.capture_source, descomentar esto, cuando migremos a creacion de ticket manual
   let sql = `
     SELECT s.sale_id, s.sale_uid, s.receipt_number, s.sale_status_id, s.subtotal, s.discount_total,
-           s.tax_total, s.total, s.amount_paid, s.balance_due, s.currency, s.capture_source,
+           s.tax_total, s.total, s.amount_paid, s.balance_due, s.currency, 
            CASE WHEN s.reweigh_of_sale_id IS NOT NULL THEN 1 ELSE 0 END as is_reweigh,
            s.occurred_at, s.created_at, s.reweigh_of_sale_id,
            t.ticket_number,

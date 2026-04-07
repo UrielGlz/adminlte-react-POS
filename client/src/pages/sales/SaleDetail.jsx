@@ -5,6 +5,7 @@ import Swal from 'sweetalert2'
 import { formatDateTime } from '../../utils/dateHelpers'
 import ReassignCustomerModal from './ReassignCustomerModal'
 import ReassignmentHistoryModal from './ReassignmentHistoryModal'
+import ConvertToReweighModal from './ConvertToReweighModal'
 
 function SaleDetail() {
   const { id } = useParams()
@@ -14,6 +15,7 @@ function SaleDetail() {
   const [paymentMethods, setPaymentMethods] = useState([])
   const [showReassignModal, setShowReassignModal] = useState(false)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
+  const [showConvertModal, setShowConvertModal] = useState(false)
   const [reassignmentCount, setReassignmentCount] = useState(0)
 
   useEffect(() => {
@@ -106,6 +108,7 @@ function SaleDetail() {
   if (!sale) return null
 
   const isCancelled = sale.status_code === 'CANCELLED'
+  const isReweigh = Number(sale.is_reweigh) === 1
 
   return (
     <div className="container-fluid p-4">
@@ -128,13 +131,18 @@ function SaleDetail() {
               <button className="btn btn-outline-warning me-2" onClick={() => setShowReassignModal(true)}>
                 <i className="bi bi-arrow-left-right me-1"></i>Change Customer
               </button>
+              {!isReweigh && (
+                <button className="btn btn-outline-info me-2" onClick={() => setShowConvertModal(true)}>
+                  <i className="bi bi-arrow-repeat me-1"></i>Convert to Re-weigh
+                </button>
+              )}
               <button className="btn btn-outline-danger me-2" onClick={handleCancel}>
                 <i className="bi bi-x-circle me-1"></i>Cancel Sale
               </button>
             </>
           )}
           {/* SI SE REQUIERE VER EL HISTORIAL DE CAMBIOS EN EL TICKET DESCOMENTAR ESTA PARTE  */}
-            {/*          
+          {/*          
           {reassignmentCount > 0 && (
             <button className="btn btn-outline-secondary me-2" onClick={() => setShowHistoryModal(true)}>
               <i className="bi bi-clock-history me-1"></i>History ({reassignmentCount})
@@ -313,6 +321,15 @@ function SaleDetail() {
         <ReassignmentHistoryModal
           saleUid={sale.sale_uid}
           onClose={() => setShowHistoryModal(false)}
+        />
+      )}
+
+      {/* Convert to Reweigh Modal */}
+      {showConvertModal && sale && (
+        <ConvertToReweighModal
+          sale={sale}
+          onClose={() => setShowConvertModal(false)}
+          onSuccess={() => { setShowConvertModal(false); fetchSale() }}
         />
       )}
     </div>

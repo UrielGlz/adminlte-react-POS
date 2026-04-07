@@ -36,6 +36,14 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
   }
 
   const currentAccountNumber = sale?.driver_info?.account_number
+  const currentAccountName = sale?.driver_info?.account_name
+  const hasSourceCustomer = Boolean(currentAccountNumber || currentAccountName || sale?.customer_id)
+  const currentCustomerLabel = hasSourceCustomer
+    ? `${currentAccountNumber || '-'} / ${currentAccountName || '-'}`
+    : 'No customer assigned'
+  const isBusinessPayment = Array.isArray(sale?.payments) && sale.payments.some(p =>
+    Number(p.method_id) === 3 || String(p.method_name || '').toLowerCase().includes('business')
+  )
   const saleTotal = parseFloat(sale?.total) || 0
 
   const filtered = customers.filter(c => {
@@ -57,8 +65,8 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
     selectedCustomer &&
     reasonId &&
     !submitting &&
-    parseFloat(selectedCustomer.available_credit) >= saleTotal &&
-    !selectedCustomer.is_suspended
+    (!isBusinessPayment || parseFloat(selectedCustomer.available_credit) >= saleTotal) &&
+    (!isBusinessPayment || !selectedCustomer.is_suspended)
 
   const handleSubmit = async () => {
     if (!selectedCustomer) return
@@ -68,15 +76,15 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
     }
 
     const confirm = await Swal.fire({
-      title: 'Confirm Reassignment',
+      title: hasSourceCustomer ? 'Confirm Reassignment' : 'Confirm Customer Assignment',
       html: `
         <p class="mb-1">Move ticket <b>#${sale.ticket_number || sale.sale_id}</b> (${formatCurrency(saleTotal)})</p>
-        <p class="mb-1">From: <b>${currentAccountNumber}</b></p>
+        <p class="mb-1">From: <b>${currentCustomerLabel}</b></p>
         <p class="mb-0">To: <b>${selectedCustomer.account_number} / ${selectedCustomer.account_name}</b></p>
       `,
       icon: 'question',
       showCancelButton: true,
-      confirmButtonText: 'Yes, reassign',
+      confirmButtonText: hasSourceCustomer ? 'Yes, reassign' : 'Yes, assign',
       confirmButtonColor: '#0d6efd'
     })
 
@@ -91,7 +99,7 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
       })
       Swal.fire({
         icon: 'success',
-        title: 'Customer reassignment completed successfully.',
+        title: res.data?.message || 'Customer reassignment completed successfully.',
         toast: true,
         position: 'top-end',
         showConfirmButton: false,
@@ -129,7 +137,7 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
                     <div className="col-md-4">
                       <label className="form-label small fw-bold">Current Customer</label>
                       <input className="form-control form-control-sm" readOnly
-                        value={`${currentAccountNumber || '-'} / ${sale.driver_info?.account_name || '-'}`} />
+                        value={currentCustomerLabel} />
                     </div>
                     <div className="col-md-4">
                       <label className="form-label small fw-bold">Amount to Move</label>
@@ -139,6 +147,12 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
                   </div>
 
                   <hr />
+
+                  {!isBusinessPayment && (
+                    <div className="alert alert-secondary py-2 small">
+                      This sale is not using Business Account. Changing the customer will update the sale and audit history only, without affecting credit balances.
+                    </div>
+                  )}
 
                   {/* New customer selector */}
                   <label className="form-label small fw-bold">New Customer <span className="text-danger">*</span></label>
@@ -182,12 +196,13 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
                             </thead>
                             <tbody>
                               {filtered.slice(0, 50).map(c => {
-                                const hasEnough = parseFloat(c.available_credit) >= saleTotal
+                                const hasEnough = !isBusinessPayment || parseFloat(c.available_credit) >= saleTotal
+                                const isBlocked = isBusinessPayment && (c.is_suspended || !hasEnough)
                                 return (
                                   <tr key={c.id_customer}
-                                    className={c.is_suspended ? 'table-warning' : (!hasEnough ? 'table-danger' : '')}
-                                    style={{ cursor: (c.is_suspended || !hasEnough) ? 'not-allowed' : 'pointer' }}
-                                    onClick={() => { if (!c.is_suspended && hasEnough) selectCustomer(c) }}>
+                                    className={isBusinessPayment ? (c.is_suspended ? 'table-warning' : (!hasEnough ? 'table-danger' : '')) : ''}
+                                    style={{ cursor: isBlocked ? 'not-allowed' : 'pointer' }}
+                                    onClick={() => { if (!isBlocked) selectCustomer(c) }}>
                                     <td><code>{c.account_number}</code></td>
                                     <td>{c.account_name}</td>
                                     <td><span className="badge bg-secondary">{c.credit_type}</span></td>
@@ -210,13 +225,13 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
                   )}
 
                   {/* Validation messages */}
-                  {selectedCustomer && selectedCustomer.is_suspended && (
+                  {isBusinessPayment && selectedCustomer && selectedCustomer.is_suspended && (
                     <div className="alert alert-warning py-1 mt-2 small mb-0">
                       <i className="bi bi-exclamation-triangle me-1"></i>
                       The selected customer is suspended and cannot receive new charges.
                     </div>
                   )}
-                  {selectedCustomer && parseFloat(selectedCustomer.available_credit) < saleTotal && !selectedCustomer.is_suspended && (
+                  {isBusinessPayment && selectedCustomer && parseFloat(selectedCustomer.available_credit) < saleTotal && !selectedCustomer.is_suspended && (
                     <div className="alert alert-danger py-1 mt-2 small mb-0">
                       <i className="bi bi-x-circle me-1"></i>
                       Insufficient available credit. Selected customer has {formatCurrency(selectedCustomer.available_credit)} available, but this ticket requires {formatCurrency(saleTotal)}.
@@ -251,7 +266,7 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
               <button className="btn btn-primary btn-sm" onClick={handleSubmit} disabled={!canSubmit}>
                 {submitting
                   ? <><span className="spinner-border spinner-border-sm me-1"></span>Processing...</>
-                  : <><i className="bi bi-check-circle me-1"></i>Reassign Customer</>}
+                  : <><i className="bi bi-check-circle me-1"></i>{hasSourceCustomer ? 'Reassign Customer' : 'Assign Customer'}</>}
               </button>
             </div>
           </div>

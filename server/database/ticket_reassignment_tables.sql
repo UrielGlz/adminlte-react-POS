@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS sale_customer_reassignments (
   reassignment_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   sale_uid CHAR(36) NOT NULL,
   ticket_uid CHAR(36) NULL,
-  from_customer_id INT(10) UNSIGNED NOT NULL,
+  from_customer_id INT(10) UNSIGNED NULL,
   to_customer_id INT(10) UNSIGNED NOT NULL,
   from_account_number VARCHAR(30) NULL,
   from_account_name VARCHAR(120) NULL,
@@ -106,6 +106,9 @@ ALTER TABLE ticket_reassignment_reasons
 
 ALTER TABLE sale_customer_reassignments
   CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+
+ALTER TABLE sale_customer_reassignments
+  MODIFY from_customer_id INT(10) UNSIGNED NULL;
 
 ALTER TABLE customer_credit_movements
   CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;

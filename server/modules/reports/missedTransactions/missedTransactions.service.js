@@ -70,6 +70,7 @@ export const getData = async (filters = {}) => {
     LEFT JOIN users u ON ssa.operator_id = u.user_id
     LEFT JOIN void_reasons vr ON ssa.missed_reason_id = vr.void_reason_id
     WHERE 1=1
+    AND missed_reason_id IS NOT NULL
   `
 
   if (date_from) {
@@ -85,7 +86,7 @@ export const getData = async (filters = {}) => {
     GROUP BY ssa.uuid_weight
     ORDER BY MAX(ssa.captured_local) DESC
   `
-
+  console.log(sql);
   const allData = await query(sql, params)
 
   const total_captures = allData.length

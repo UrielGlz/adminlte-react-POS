@@ -184,22 +184,22 @@ function MissedTransactions() {
               </div>
             </div>
           </div>
-          <div className="col-md-3">
+           {/* <div className="col-md-3">
             <div className="card text-center border-0 shadow-sm">
               <div className="card-body py-3">
                 <h3 className="mb-0 text-success">{totals.matched_count}</h3>
                 <small className="text-muted">Completed ({completedPct}%)</small>
               </div>
             </div>
-          </div>
-          <div className="col-md-3">
+          </div> */}
+          {/* <div className="col-md-3">
             <div className="card text-center border-0 shadow-sm">
               <div className="card-body py-3">
                 <h3 className="mb-0 text-danger">{totals.unmatched_count}</h3>
                 <small className="text-muted">Missed ({missedPct}%)</small>
               </div>
             </div>
-          </div>
+          </div> */}
           <div className="col-md-3">
             <div className="card text-center border-0 shadow-sm">
               <div className="card-body py-3">

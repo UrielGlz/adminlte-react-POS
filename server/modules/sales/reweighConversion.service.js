@@ -178,9 +178,6 @@ export const convertToReweigh = async (saleUid, payload, userId) => {
     const currentAccount = String(currentDriver.account_number ?? '').trim()
     const originalAccount = String(origDriver.account_number ?? '').trim()
 
-    const currentPlates = String(currentDriver.vehicle_plates ?? '').trim().toUpperCase()
-    const originalPlates = String(origDriver.vehicle_plates ?? '').trim().toUpperCase()
-
     const shouldValidateAccount = currentAccount !== '' && originalAccount !== ''
 
     // Solo validar cuenta cuando AMBOS tickets tengan account_number
@@ -191,13 +188,8 @@ export const convertToReweigh = async (saleUid, payload, userId) => {
       )
     }
 
-    // Las placas siguen siendo obligatorias para validar el repesaje
-    if (currentPlates !== originalPlates) {
-      throw new BadRequestError(
-        `Vehicle plates mismatch. Current sale: "${currentPlates}", ` +
-        `original ticket: "${originalPlates}".`
-      )
-    }
+    // Plate validation removed: trailers frequently change plates between weigh
+    // and re-weigh, so blocking on plate mismatch was rejecting valid business cases.
 
     // ── 8. Time window check (skip if setting not configured) ──
     const [settingRows] = await conn.query(

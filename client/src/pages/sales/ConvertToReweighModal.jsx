@@ -176,7 +176,7 @@ function ConvertToReweighModal({ sale, onClose, onSuccess }) {
                       autoFocus
                     />
                     <div className="form-text text-muted">
-                      Numbers only. Must belong to the same customer and vehicle plates.
+                      Numbers only. Must belong to the same customer.
                     </div>
                   </div>
 

@@ -1,6 +1,24 @@
 import { query, getConnection } from '../../config/database.js'
 import { NotFoundError, BadRequestError, ConflictError } from '../../utils/errors.js'
 
+/**
+ * Robust business-account detector — mirrors the same helper in reassignment.service.js.
+ * The payment_methods.code in this database is 'business' (not 'business_account'),
+ * so a strict === 'business_account' check silently evaluates to false and skips the
+ * credit update. This helper accepts any recognisable variant.
+ */
+const isBusinessPaymentMethod = (payment) => {
+  const code = String(payment?.method_code || payment?.payment_method_code || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+
+  return Number(payment?.method_id) === 3 ||
+    code === 'business' ||
+    code === 'business_account' ||
+    code.includes('business')
+}
+
 // ── public API ───────────────────────────────────────────────
 
 /**
@@ -252,7 +270,7 @@ export const convertToReweigh = async (saleUid, payload, userId) => {
     if (payRows.length === 0) throw new NotFoundError('Payment record not found for this sale.')
     const payment = payRows[0]
 
-    const isBusinessAccount = payment.method_code === 'business_account'
+    const isBusinessAccount = isBusinessPaymentMethod(payment)
     const isPaymentPending = payment.payment_status_code === 'PENDING'
 
     // ── 13. Adjust customer credit if business_account + PENDING ──

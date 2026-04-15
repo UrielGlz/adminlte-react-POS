@@ -13,17 +13,12 @@ const __dirname = path.dirname(__filename)
 /**
  * Missed Transactions Report Service
  *
- * Muestra TODAS las capturas de báscula (scale_session_axles),
- * agrupadas por uuid_weight (una fila por uuid),
- * diferenciando si fueron usadas (matched en sale_driver_info) o no (missed).
+ * Shows every scale capture (scale_session_axles) that has a missed_reason_id.
+ * That is the sole criterion: missed_reason_id IS NOT NULL.
  *
- * Estrategia de agrupación:
- * - Se usa MIN(id) como id representativo del grupo
- * - Se toma MAX(captured_local) como fecha (en caso de duplicados, la más reciente)
- * - eje1, eje2, eje3, peso_total, weight_lb se toman con MAX() ya que para el mismo
- *   uuid_weight deben ser idénticos; MAX() es determinista y seguro
- * - operator_id se toma con MAX() (mismo criterio)
- * - is_matched: EXISTS en sale_driver_info.match_key
+ * No is_matched logic, no sale_driver_info join, no match_key comparison.
+ * Grouping by uuid_weight keeps one logical row per capture when the
+ * hardware writes multiple physical rows for the same uuid.
  */
 
 const getLogoPath = (logoFilename) => {
@@ -36,11 +31,11 @@ const getLogoPath = (logoFilename) => {
 }
 
 /**
- * Obtener datos del reporte
+ * Fetch report data.
  *
- * Retorna: { data, totals }
- * - data: array con una fila por uuid_weight
- * - totals: conteos y sumas para KPIs
+ * Returns { data, totals }
+ *   data   — one row per uuid_weight where missed_reason_id IS NOT NULL
+ *   totals — { total_captures, total_weight }
  */
 export const getData = async (filters = {}) => {
   const { date_from = null, date_to = null } = filters
@@ -48,29 +43,21 @@ export const getData = async (filters = {}) => {
 
   let sql = `
     SELECT
-      MIN(ssa.id) as id,
+      MIN(ssa.id)               AS id,
       ssa.uuid_weight,
-      MAX(ssa.captured_local) as captured_local,
-      MAX(ssa.weight_lb) as weight_lb,
-      MAX(ssa.eje1) as eje1,
-      MAX(ssa.eje2) as eje2,
-      MAX(ssa.eje3) as eje3,
-      MAX(ssa.peso_total) as peso_total,
-      MAX(ssa.operator_id) as operator_id,
-      MAX(u.full_name) as operator_name,
-      MAX(vr.label) as missed_reason,
-      CASE
-        WHEN EXISTS (
-          SELECT 1 FROM sale_driver_info sdi
-          WHERE sdi.match_key = ssa.uuid_weight
-        ) THEN 1
-        ELSE 0
-      END as is_matched
+      MAX(ssa.captured_local)   AS captured_local,
+      MAX(ssa.weight_lb)        AS weight_lb,
+      MAX(ssa.eje1)             AS eje1,
+      MAX(ssa.eje2)             AS eje2,
+      MAX(ssa.eje3)             AS eje3,
+      MAX(ssa.peso_total)       AS peso_total,
+      MAX(ssa.operator_id)      AS operator_id,
+      MAX(u.full_name)          AS operator_name,
+      MAX(vr.label)             AS missed_reason
     FROM scale_session_axles ssa
-    LEFT JOIN users u ON ssa.operator_id = u.user_id
+    LEFT JOIN users       u  ON ssa.operator_id      = u.user_id
     LEFT JOIN void_reasons vr ON ssa.missed_reason_id = vr.void_reason_id
-    WHERE 1=1
-    AND missed_reason_id IS NOT NULL
+    WHERE ssa.missed_reason_id IS NOT NULL
   `
 
   if (date_from) {
@@ -86,51 +73,30 @@ export const getData = async (filters = {}) => {
     GROUP BY ssa.uuid_weight
     ORDER BY MAX(ssa.captured_local) DESC
   `
-  console.log(sql);
-  const allData = await query(sql, params)
 
-  const total_captures = allData.length
-  const matched_count = allData.filter(d => d.is_matched === 1).length
-  const unmatched_count = allData.filter(d => d.is_matched === 0).length
+  const data = await query(sql, params)
 
   const totals = {
-    total_captures,
-    matched_count,
-    matched_percent: total_captures ? ((matched_count / total_captures) * 100).toFixed(1) : '0.0',
-    unmatched_count,
-    unmatched_percent: total_captures ? ((unmatched_count / total_captures) * 100).toFixed(1) : '0.0',
-    total_missed_weight: allData.filter(d => d.is_matched === 0).reduce((sum, d) => sum + (parseFloat(d.weight_lb) || 0), 0),
+    total_captures: data.length,
+    total_weight: data.reduce((sum, d) => sum + (parseFloat(d.weight_lb) || 0), 0)
   }
-
-  // Solo retornamos las Missed
-  const data = allData.filter(d => d.is_matched === 0)
 
   return { data, totals }
 }
 
 /**
- * Obtener opciones para filtros (por ahora solo fechas, placeholder)
+ * Placeholder — no dynamic filter options required for this report.
  */
 export const getFilterOptions = async () => {
   return {}
 }
 
 /**
- * Generar PDF
- *
- * Patrón robusto:
- * - bufferPages: true para footers con conteo real
- * - Detección dinámica de última página
- * - Summary al final sin sobreposición
+ * Generate PDF export.
  */
 export const generatePdf = async (filters = {}) => {
   const { data, totals } = await getData(filters)
   const settings = await getReportSettings()
-
-  const formatCurrency = (val) => {
-    if (val === null || val === undefined) return '-'
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val)
-  }
 
   const formatNumber = (val) => {
     if (val === null || val === undefined) return '-'
@@ -160,51 +126,44 @@ export const generatePdf = async (filters = {}) => {
       doc.on('end', () => resolve(Buffer.concat(buffers)))
       doc.on('error', reject)
 
-      // Colores
       const primaryColor = '#6f42c1'
-      const headerBg = '#5a32a3'
-      const altRowBg = '#F2F2F2'
-      const textGray = '#666666'
-      const successColor = '#28a745'
+      const headerBg    = '#5a32a3'
+      const altRowBg    = '#F2F2F2'
+      const textGray    = '#666666'
       const dangerColor = '#dc3545'
 
-      // Dimensiones
-      const pageWidth = doc.page.width
-      const pageHeight = doc.page.height
-      const marginLeft = doc.page.margins.left
-      const marginRight = doc.page.margins.right
+      const pageWidth    = doc.page.width
+      const pageHeight   = doc.page.height
+      const marginLeft   = doc.page.margins.left
+      const marginRight  = doc.page.margins.right
       const contentWidth = pageWidth - marginLeft - marginRight
-      const footerY = pageHeight - doc.page.margins.bottom - 12
-      const rowHeight = 12
-      const headerAreaHeight = 100
+      const footerY      = pageHeight - doc.page.margins.bottom - 12
+      const rowHeight    = 12
 
-      // Summary block dimensions
-      const summaryBoxWidth = 500
+      // Summary block at bottom of last page
+      const summaryBoxWidth    = 400
       const summaryHeaderHeight = 16
-      const summaryBodyHeight = 16
-      const summaryBlockHeight = summaryHeaderHeight + summaryBodyHeight
+      const summaryBodyHeight   = 16
+      const summaryBlockHeight  = summaryHeaderHeight + summaryBodyHeight
       const bottomGapFromFooter = 8
-      const totalBottomBlocksHeight = bottomGapFromFooter + summaryBlockHeight
-      const summaryAreaTop = footerY - totalBottomBlocksHeight
-      const normalPageLimit = footerY - 5
+      const summaryAreaTop      = footerY - bottomGapFromFooter - summaryBlockHeight
+      const normalPageLimit     = footerY - 5
 
-      // Filter text
       const filterText = [
         filters.date_from ? `From: ${filters.date_from}` : '',
-        filters.date_to ? `To: ${filters.date_to}` : ''
+        filters.date_to   ? `To: ${filters.date_to}`     : ''
       ].filter(Boolean).join(' | ') || 'All records'
 
       const rightColW = 190
-      const rightX = pageWidth - marginRight - rightColW
+      const rightX    = pageWidth - marginRight - rightColW
 
-      // ========== HEADER ==========
+      // ── MAIN HEADER (first page) ─────────────────────────────────
       const drawMainHeader = () => {
         const headerTop = 15
 
         if (logoPath) {
-          try {
-            doc.image(logoPath, marginLeft, headerTop, { fit: [50, 30] })
-          } catch (e) { /* ignore */ }
+          try { doc.image(logoPath, marginLeft, headerTop, { fit: [50, 30] }) }
+          catch (e) { /* ignore */ }
         }
 
         doc.fontSize(13).fillColor(primaryColor).font('Helvetica-Bold')
@@ -214,46 +173,47 @@ export const generatePdf = async (filters = {}) => {
           .text('Missed Transactions Report', marginLeft + 60, headerTop + 20, { width: contentWidth - 180, align: 'center' })
 
         doc.fontSize(7).fillColor(textGray).font('Helvetica')
-          .text(`Generated: ${formatGeneratedTimestamp()}`, rightX, headerTop + 5, { width: rightColW, align: 'right' })
-          .text(`Filters: ${filterText}`, rightX, headerTop + 15, { width: rightColW, align: 'right' })
+          .text(`Generated: ${formatGeneratedTimestamp()}`, rightX, headerTop + 5,  { width: rightColW, align: 'right' })
+          .text(`Filters: ${filterText}`,                   rightX, headerTop + 15, { width: rightColW, align: 'right' })
 
-        doc.moveTo(marginLeft, 48).lineTo(pageWidth - marginRight, 48).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
+        doc.moveTo(marginLeft, 48).lineTo(pageWidth - marginRight, 48)
+          .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
 
-        // Summary cards inline
-        let yPos = 55
+        // KPI cards inline
+        const yKpi = 55
         doc.fontSize(7).font('Helvetica-Bold')
+        doc.fillColor('#333333')
+          .text(`Total Captures: ${totals.total_captures}`, marginLeft, yKpi)
+        doc.fillColor(dangerColor)
+          .text(`Total Weight: ${formatNumber(totals.total_weight)} lb`, marginLeft + 160, yKpi)
 
-        doc.fillColor('#333333').text(`Total Captures: ${totals.total_captures}`, marginLeft, yPos)
-        doc.fillColor(successColor).text(`Completed: ${totals.matched_count} (${totals.matched_percent}%)`, marginLeft + 130, yPos)
-        doc.fillColor(dangerColor).text(`Missed: ${totals.unmatched_count} (${totals.unmatched_percent}%)`, marginLeft + 270, yPos)
-
-        doc.moveTo(marginLeft, 70).lineTo(pageWidth - marginRight, 70).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
+        doc.moveTo(marginLeft, 70).lineTo(pageWidth - marginRight, 70)
+          .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
 
         return 78
       }
 
+      // ── SIMPLE HEADER (continuation pages) ──────────────────────
       const drawSimpleHeader = () => {
         doc.fontSize(10).fillColor(primaryColor).font('Helvetica-Bold')
           .text(`${settings.companyName} - Missed Transactions Report`, marginLeft, 20)
-
-        doc.moveTo(marginLeft, 35).lineTo(pageWidth - marginRight, 35).strokeColor('#CCCCCC').lineWidth(0.5).stroke()
-
+        doc.moveTo(marginLeft, 35).lineTo(pageWidth - marginRight, 35)
+          .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
         return 45
       }
 
-      // ========== TABLE ==========
+      // ── TABLE ────────────────────────────────────────────────────
       const tableLeft = marginLeft
-      // #, ID, UUID, Date/Time, Weight lb, Eje1, Eje2, Eje3, Total, Operator, Status, Reason
       const colWidths = [25, 35, 110, 70, 50, 45, 45, 45, 50, 75, 50, 70]
       const tableWidth = colWidths.reduce((a, b) => a + b, 0)
-      const headers = ['#', 'ID', 'UUID', 'Date/Time', 'Weight', 'Axle 1', 'Axle 2', 'Axle 3', 'Total', 'Operator', 'Status', 'Reason']
+      const tableHeaders = ['#', 'ID', 'UUID', 'Date/Time', 'Weight', 'Axle 1', 'Axle 2', 'Axle 3', 'Total', 'Operator', 'Status', 'Reason']
       const tableHeaderHeight = 14
 
       const drawTableHeader = (y) => {
         doc.rect(tableLeft, y, tableWidth, tableHeaderHeight).fill(headerBg)
         doc.fontSize(6).fillColor('#FFFFFF').font('Helvetica-Bold')
         let xPos = tableLeft + 2
-        headers.forEach((header, i) => {
+        tableHeaders.forEach((header, i) => {
           const align = (i >= 4 && i <= 8) ? 'right' : (i === 10 ? 'center' : 'left')
           doc.text(header, xPos, y + 4, { width: colWidths[i] - 4, align })
           xPos += colWidths[i]
@@ -261,26 +221,25 @@ export const generatePdf = async (filters = {}) => {
         return y + tableHeaderHeight
       }
 
-      // ========== RENDER ==========
-      let yPos = drawMainHeader()
-      let tableTopY = yPos
-      yPos = drawTableHeader(yPos)
-      let rowIndex = 0
+      // ── RENDER ───────────────────────────────────────────────────
+      let yPos       = drawMainHeader()
+      let tableTopY  = yPos
+      yPos           = drawTableHeader(yPos)
+      let rowIndex   = 0
 
       while (rowIndex < data.length) {
-        const remainingRows = data.length - rowIndex
+        const remainingRows    = data.length - rowIndex
         const yAfterAllRemaining = yPos + (remainingRows * rowHeight)
-        const fitsWithSummary = yAfterAllRemaining <= summaryAreaTop
-        const pageLimit = fitsWithSummary ? summaryAreaTop : normalPageLimit
+        const fitsWithSummary  = yAfterAllRemaining <= summaryAreaTop
+        const pageLimit        = fitsWithSummary ? summaryAreaTop : normalPageLimit
 
         if (yPos + rowHeight > pageLimit) {
           doc.rect(tableLeft, tableTopY, tableWidth, yPos - tableTopY)
             .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
-
           doc.addPage()
-          yPos = drawSimpleHeader()
+          yPos      = drawSimpleHeader()
           tableTopY = yPos
-          yPos = drawTableHeader(yPos)
+          yPos      = drawTableHeader(yPos)
           continue
         }
 
@@ -289,8 +248,6 @@ export const generatePdf = async (filters = {}) => {
         }
 
         const row = data[rowIndex]
-        const statusLabel = row.is_matched ? 'Completed' : 'Missed'
-        const statusColor = row.is_matched ? successColor : dangerColor
 
         const rowData = [
           String(rowIndex + 1),
@@ -303,7 +260,7 @@ export const generatePdf = async (filters = {}) => {
           formatInt(row.eje3),
           formatInt(row.peso_total),
           (row.operator_name || '-').substring(0, 14),
-          statusLabel,
+          'Missed',
           row.missed_reason || '-'
         ]
 
@@ -311,7 +268,7 @@ export const generatePdf = async (filters = {}) => {
         let xPos = tableLeft + 2
         rowData.forEach((cell, i) => {
           if (i === 10) {
-            doc.fillColor(statusColor).font('Helvetica-Bold')
+            doc.fillColor(dangerColor).font('Helvetica-Bold')
           } else {
             doc.fillColor('#333333').font('Helvetica')
           }
@@ -324,17 +281,17 @@ export const generatePdf = async (filters = {}) => {
         rowIndex++
       }
 
-      // Borde final de tabla
+      // Table border
       doc.rect(tableLeft, tableTopY, tableWidth, yPos - tableTopY)
         .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
 
-      // Si la tabla invadió la zona del summary → nueva página
+      // If table crept into summary zone, open a new page for the summary
       if (yPos > summaryAreaTop) {
         doc.addPage()
         drawSimpleHeader()
       }
 
-      // ========== SUMMARY al fondo ==========
+      // ── SUMMARY BLOCK ────────────────────────────────────────────
       const summaryTop = footerY - bottomGapFromFooter - summaryBlockHeight
 
       doc.rect(tableLeft, summaryTop, summaryBoxWidth, summaryHeaderHeight).fill('#E7E6E6')
@@ -342,17 +299,15 @@ export const generatePdf = async (filters = {}) => {
         .text('Summary', tableLeft, summaryTop + 4, { width: summaryBoxWidth, align: 'center' })
 
       doc.fontSize(7).fillColor('#000000').font('Helvetica')
-      doc.text(`Total Captures: ${totals.total_captures}`, tableLeft + 6, summaryTop + summaryHeaderHeight + 3)
-      doc.fillColor(successColor).font('Helvetica-Bold')
-        .text(`Completed: ${totals.matched_count} (${totals.matched_percent}%)`, tableLeft + 130, summaryTop + summaryHeaderHeight + 3)
-      doc.fillColor(dangerColor)
-        .text(`Missed: ${totals.unmatched_count} (${totals.unmatched_percent}%)`, tableLeft + 290, summaryTop + summaryHeaderHeight + 3)
+        .text(`Total Captures: ${totals.total_captures}`, tableLeft + 6, summaryTop + summaryHeaderHeight + 3)
+      doc.fillColor(dangerColor).font('Helvetica-Bold')
+        .text(`Total Weight: ${formatNumber(totals.total_weight)} lb`, tableLeft + 160, summaryTop + summaryHeaderHeight + 3)
 
       doc.rect(tableLeft, summaryTop, summaryBoxWidth, summaryBlockHeight)
         .strokeColor('#CCCCCC').lineWidth(0.5).stroke()
 
-      // ========== FOOTERS con conteo real ==========
-      const range = doc.bufferedPageRange()
+      // ── PAGE FOOTERS ─────────────────────────────────────────────
+      const range      = doc.bufferedPageRange()
       const totalPages = range.count
 
       for (let i = 0; i < totalPages; i++) {
@@ -360,9 +315,7 @@ export const generatePdf = async (filters = {}) => {
         doc.fontSize(6).fillColor(textGray).font('Helvetica')
         doc.text(settings.companyAddress || '', marginLeft, footerY, { lineBreak: false })
         doc.text(`Page ${i + 1} of ${totalPages}`, pageWidth - marginRight - 80, footerY, {
-          width: 80,
-          align: 'right',
-          lineBreak: false
+          width: 80, align: 'right', lineBreak: false
         })
       }
 
@@ -374,7 +327,7 @@ export const generatePdf = async (filters = {}) => {
 }
 
 /**
- * Generar Excel
+ * Generate Excel export.
  */
 export const generateExcel = async (filters = {}) => {
   const { data, totals } = await getData(filters)
@@ -390,119 +343,115 @@ export const generateExcel = async (filters = {}) => {
     pageSetup: { paperSize: 9, orientation: 'landscape' }
   })
 
-  // ========== HEADER (A..K = 11 columnas) ==========
+  // ── HEADER ───────────────────────────────────────────────────
   worksheet.mergeCells('A1:L1')
-  worksheet.getCell('A1').value = settings.companyName
-  worksheet.getCell('A1').font = { size: 16, bold: true, color: { argb: '6F42C1' } }
+  worksheet.getCell('A1').value     = settings.companyName
+  worksheet.getCell('A1').font      = { size: 16, bold: true, color: { argb: '6F42C1' } }
   worksheet.getCell('A1').alignment = { horizontal: 'center' }
 
   worksheet.mergeCells('A2:L2')
-  worksheet.getCell('A2').value = 'Missed Transactions Report'
-  worksheet.getCell('A2').font = { size: 12, bold: true }
+  worksheet.getCell('A2').value     = 'Missed Transactions Report'
+  worksheet.getCell('A2').font      = { size: 12, bold: true }
   worksheet.getCell('A2').alignment = { horizontal: 'center' }
 
   const filterText = [
     filters.date_from ? `From: ${filters.date_from}` : '',
-    filters.date_to ? `To: ${filters.date_to}` : ''
+    filters.date_to   ? `To: ${filters.date_to}`     : ''
   ].filter(Boolean).join(' | ') || 'All records'
 
   worksheet.mergeCells('A3:L3')
-  worksheet.getCell('A3').value = `Generated: ${formatGeneratedTimestamp()} | ${filterText}`
-  worksheet.getCell('A3').font = { size: 9, italic: true, color: { argb: '666666' } }
+  worksheet.getCell('A3').value     = `Generated: ${formatGeneratedTimestamp()} | ${filterText}`
+  worksheet.getCell('A3').font      = { size: 9, italic: true, color: { argb: '666666' } }
   worksheet.getCell('A3').alignment = { horizontal: 'center' }
 
   worksheet.addRow([])
 
-  // ========== SUMMARY ==========
+  // ── SUMMARY ──────────────────────────────────────────────────
   worksheet.mergeCells('A5:L5')
-  const summHeader = worksheet.getCell('A5')
-  summHeader.value = 'Summary'
-  summHeader.font = { bold: true, color: { argb: 'FFFFFF' } }
-  summHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '5A32A3' } }
+  const summHeader       = worksheet.getCell('A5')
+  summHeader.value       = 'Summary'
+  summHeader.font        = { bold: true, color: { argb: 'FFFFFF' } }
+  summHeader.fill        = { type: 'pattern', pattern: 'solid', fgColor: { argb: '5A32A3' } }
+  summHeader.alignment   = { horizontal: 'center' }
 
   worksheet.getCell('A6').value = 'Total Captures:'
   worksheet.getCell('B6').value = totals.total_captures
-  worksheet.getCell('B6').font = { bold: true }
-  worksheet.getCell('C6').value = 'Completed:'
-  worksheet.getCell('D6').value = `${totals.matched_count} (${totals.matched_percent}%)`
-  worksheet.getCell('D6').font = { color: { argb: '28A745' }, bold: true }
-  worksheet.getCell('E6').value = 'Missed:'
-  worksheet.getCell('F6').value = `${totals.unmatched_count} (${totals.unmatched_percent}%)`
-  worksheet.getCell('F6').font = { color: { argb: 'DC3545' }, bold: true }
+  worksheet.getCell('B6').font  = { bold: true }
+
+  worksheet.getCell('C6').value = 'Total Weight:'
+  worksheet.getCell('D6').value = `${Number(totals.total_weight).toFixed(2)} lb`
+  worksheet.getCell('D6').font  = { bold: true, color: { argb: 'DC3545' } }
 
   worksheet.addRow([])
 
-  // ========== TABLE ==========
+  // ── TABLE ────────────────────────────────────────────────────
   const tableStartRow = 8
-
-  const colWidths = [8, 10, 32, 20, 12, 10, 10, 10, 12, 18, 12, 20]
-  colWidths.forEach((w, i) => worksheet.getColumn(i + 1).width = w)
+  const colWidths     = [8, 10, 32, 20, 12, 10, 10, 10, 12, 18, 12, 20]
+  colWidths.forEach((w, i) => { worksheet.getColumn(i + 1).width = w })
 
   const headers = ['#', 'ID', 'UUID', 'Date/Time', 'Weight', 'Axle 1', 'Axle 2', 'Axle 3', 'Total', 'Operator', 'Status', 'Reason']
   headers.forEach((h, i) => {
-    const cell = worksheet.getCell(tableStartRow, i + 1)
-    cell.value = h
-    cell.font = { bold: true, color: { argb: 'FFFFFF' } }
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '5A32A3' } }
-    cell.alignment = { horizontal: 'center', vertical: 'middle' }
-    cell.border = {
-      top: { style: 'thin', color: { argb: 'CCCCCC' } },
-      left: { style: 'thin', color: { argb: 'CCCCCC' } },
+    const cell       = worksheet.getCell(tableStartRow, i + 1)
+    cell.value       = h
+    cell.font        = { bold: true, color: { argb: 'FFFFFF' } }
+    cell.fill        = { type: 'pattern', pattern: 'solid', fgColor: { argb: '5A32A3' } }
+    cell.alignment   = { horizontal: 'center', vertical: 'middle' }
+    cell.border      = {
+      top:    { style: 'thin', color: { argb: 'CCCCCC' } },
+      left:   { style: 'thin', color: { argb: 'CCCCCC' } },
       bottom: { style: 'thin', color: { argb: 'CCCCCC' } },
-      right: { style: 'thin', color: { argb: 'CCCCCC' } }
+      right:  { style: 'thin', color: { argb: 'CCCCCC' } }
     }
   })
 
   let currentRow = tableStartRow + 1
-  data.forEach((row, index) => {
-    const statusLabel = row.is_matched ? 'Completed' : 'Missed'
-    const statusColor = row.is_matched ? '28A745' : 'DC3545'
 
+  data.forEach((row, index) => {
     const rowData = [
       index + 1,
       row.id || '-',
       row.uuid_weight || '-',
       formatDate(row.captured_local),
       parseFloat(row.weight_lb) || 0,
-      Math.round(Number(row.eje1) || 0),
-      Math.round(Number(row.eje2) || 0),
-      Math.round(Number(row.eje3) || 0),
+      Math.round(Number(row.eje1)       || 0),
+      Math.round(Number(row.eje2)       || 0),
+      Math.round(Number(row.eje3)       || 0),
       Math.round(Number(row.peso_total) || 0),
-      row.operator_name || '-',
-      statusLabel,
-      row.missed_reason || '-'
+      row.operator_name  || '-',
+      'Missed',
+      row.missed_reason  || '-'
     ]
 
     rowData.forEach((value, colIndex) => {
-      const cell = worksheet.getCell(currentRow, colIndex + 1)
-      cell.value = value
+      const cell  = worksheet.getCell(currentRow, colIndex + 1)
+      cell.value  = value
 
       if (index % 2 === 0) {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F2F2F2' } }
       }
 
       cell.border = {
-        top: { style: 'thin', color: { argb: 'CCCCCC' } },
-        left: { style: 'thin', color: { argb: 'CCCCCC' } },
+        top:    { style: 'thin', color: { argb: 'CCCCCC' } },
+        left:   { style: 'thin', color: { argb: 'CCCCCC' } },
         bottom: { style: 'thin', color: { argb: 'CCCCCC' } },
-        right: { style: 'thin', color: { argb: 'CCCCCC' } }
+        right:  { style: 'thin', color: { argb: 'CCCCCC' } }
       }
 
-      // Weight number format
+      // Weight column — decimal
       if (colIndex === 4) {
-        cell.numFmt = '#,##0.00'
+        cell.numFmt    = '#,##0.00'
         cell.alignment = { horizontal: 'right' }
       }
 
-      // Integer columns (eje1, eje2, eje3, total)
+      // Axle / total columns — integer
       if (colIndex >= 5 && colIndex <= 8) {
-        cell.numFmt = '#,##0'
+        cell.numFmt    = '#,##0'
         cell.alignment = { horizontal: 'right' }
       }
 
-      // Status color
+      // Status column — always Missed
       if (colIndex === 10) {
-        cell.font = { bold: true, color: { argb: statusColor } }
+        cell.font      = { bold: true, color: { argb: 'DC3545' } }
         cell.alignment = { horizontal: 'center' }
       }
     })

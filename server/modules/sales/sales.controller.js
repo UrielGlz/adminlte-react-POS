@@ -31,10 +31,19 @@ export const updatePaymentMethod = async (req, res, next) => {
   } catch (error) { next(error) }
 }
 
-export const cancelSale = async (req, res, next) => {
+export const getVoidReasons = async (req, res, next) => {
   try {
-    const { reason_id } = req.body
-    const item = await salesService.cancelSale(req.params.id, reason_id)
+    const items = await salesService.getVoidReasons()
+    success(res, items)
+  } catch (error) { next(error) }
+}
+
+export const cancelSale = async (req, res, next) => {
+
+  try {
+   
+    const { void_reason_id } = req.body
+    const item = await salesService.cancelSale(req.params.id, void_reason_id, req.user.userId)
     success(res, item, 'Sale cancelled')
   } catch (error) { next(error) }
 }
@@ -64,4 +73,4 @@ export const downloadTicketPdf = async (req, res) => {
     return res.status(500).json({ success:false, message:'Could not generate ticket PDF' })
   }
 }
-export default { getAll, getById, updatePaymentMethod, cancelSale, getSummary,downloadTicketPdf }
+export default { getAll, getById, updatePaymentMethod, cancelSale, getSummary, downloadTicketPdf, getVoidReasons }

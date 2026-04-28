@@ -6,6 +6,7 @@ import { formatDateTime } from '../../utils/dateHelpers'
 import ReassignCustomerModal from './ReassignCustomerModal'
 import ReassignmentHistoryModal from './ReassignmentHistoryModal'
 import ConvertToReweighModal from './ConvertToReweighModal'
+import CancelSaleModal from './CancelSaleModal'
 
 function SaleDetail() {
   const { id } = useParams()
@@ -16,6 +17,7 @@ function SaleDetail() {
   const [showReassignModal, setShowReassignModal] = useState(false)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
   const [showConvertModal, setShowConvertModal] = useState(false)
+  const [showCancelModal, setShowCancelModal] = useState(false)
   const [reassignmentCount, setReassignmentCount] = useState(0)
 
   useEffect(() => {
@@ -50,23 +52,14 @@ function SaleDetail() {
     } catch (error) { console.error(error) }
   }
 
-  const handleCancel = async () => {
-    const result = await Swal.fire({
-      title: 'Cancel Sale?',
-      text: 'This action cannot be undone.',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#dc3545',
-      confirmButtonText: 'Yes, cancel it'
-    })
-    if (result.isConfirmed) {
-      try {
-        await api.put(`/sales/${id}/cancel`, { reason_id: 1 })
-        Swal.fire({ icon: 'success', title: 'Cancelled!', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 })
-        fetchSale()
-      } catch (error) {
-        Swal.fire('Error', error.response?.data?.message || 'Could not cancel', 'error')
-      }
+  const handleCancelConfirm = async (voidReasonId) => {
+    try {
+      await api.put(`/sales/${id}/cancel`, { void_reason_id: voidReasonId })
+      setShowCancelModal(false)
+      Swal.fire({ icon: 'success', title: 'Sale cancelled', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 })
+      fetchSale()
+    } catch (error) {
+      Swal.fire('Error', error.response?.data?.message || 'Could not cancel', 'error')
     }
   }
 
@@ -136,7 +129,7 @@ function SaleDetail() {
                   <i className="bi bi-arrow-repeat me-1"></i>Convert to Re-weigh
                 </button>
               )}
-              <button className="btn btn-outline-danger me-2" onClick={handleCancel}>
+              <button className="btn btn-outline-danger me-2" onClick={() => setShowCancelModal(true)}>
                 <i className="bi bi-x-circle me-1"></i>Cancel Sale
               </button>
             </>
@@ -330,6 +323,15 @@ function SaleDetail() {
           sale={sale}
           onClose={() => setShowConvertModal(false)}
           onSuccess={() => { setShowConvertModal(false); fetchSale() }}
+        />
+      )}
+
+      {/* Cancel Sale Modal */}
+      {showCancelModal && sale && (
+        <CancelSaleModal
+          sale={sale}
+          onClose={() => setShowCancelModal(false)}
+          onSuccess={handleCancelConfirm}
         />
       )}
     </div>

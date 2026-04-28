@@ -1,5 +1,5 @@
-import { query } from '../../config/database.js'
-import { NotFoundError, ConflictError } from '../../utils/errors.js'
+import { query, transaction } from '../../config/database.js'
+import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors.js'
 
 export const getAll = async (filters = {}) => {
   const { date_from, date_to, status_id, is_reweigh, ticket_number } = filters
@@ -127,18 +127,57 @@ export const updatePaymentMethod = async (saleId, newMethodId) => {
   return await getById(saleId)
 }
 
-export const cancelSale = async (saleId, reasonId) => {
-  const sale = await query('SELECT sale_id, sale_status_id FROM sales WHERE sale_id = ?', [saleId])
+export const getVoidReasons = async () => {
+  return await query(
+    `SELECT void_reason_id, code, label
+     FROM void_reasons
+     WHERE is_active = 1
+     ORDER BY sort_order, label`
+  )
+}
+
+export const cancelSale = async (saleId, reasonId, userId) => {
+  // --- Validations (read-only, outside transaction) ---
+  if (!reasonId) throw new BadRequestError('void_reason_id is required')
+
+  const reason = await query(
+    'SELECT void_reason_id FROM void_reasons WHERE void_reason_id = ? AND is_active = 1',
+    [reasonId]
+  )
+  if (reason.length === 0) throw new BadRequestError('Invalid or inactive void reason')
+
+  const sale = await query('SELECT sale_id, sale_uid, sale_status_id FROM sales WHERE sale_id = ?', [saleId])
   if (sale.length === 0) throw new NotFoundError('Sale not found')
 
-  // Status 3 = CANCELLED (from your status_catalogo)
-  const cancelledStatusId = 3
+  // Resolve CANCELLED status from catalog — no hardcoded ID
+  const cancelledStatus = await query(
+    `SELECT status_id FROM status_catalogo WHERE module = 'SALES' AND code = 'VOID' AND is_active = 1 LIMIT 1`
+  )
+  if (cancelledStatus.length === 0) throw new BadRequestError('SALES/VOID status not found in catalog')
+  const cancelledStatusId = cancelledStatus[0].status_id
 
   if (sale[0].sale_status_id === cancelledStatusId) {
     throw new ConflictError('Sale is already cancelled')
   }
 
-  await query('UPDATE sales SET sale_status_id = ?, updated_at = NOW() WHERE sale_id = ?', [cancelledStatusId, saleId])
+  // Resolve VOIDED payment status from catalog — no hardcoded ID
+  const voidedStatus = await query(
+    `SELECT status_id FROM status_catalogo WHERE module = 'PAYMENTS' AND code = 'VOIDED' AND is_active = 1 LIMIT 1`
+  )
+  if (voidedStatus.length === 0) throw new BadRequestError('PAYMENTS/VOIDED status not found in catalog')
+  const voidedStatusId = voidedStatus[0].status_id
+
+  // --- Atomic writes ---
+  await transaction(async (conn) => {
+    await conn.query(
+      `UPDATE sales SET sale_status_id = ?, void_reason_id = ?, voided_at = NOW(), voided_by_user = ?, updated_at = NOW() WHERE sale_id = ?`,
+      [cancelledStatusId, reasonId, userId, saleId]
+    )
+    await conn.query(
+      `UPDATE payments SET payment_status_id = ?, amount_applied = 0.00, updated_at = NOW() WHERE sale_uid = ?`,
+      [voidedStatusId, sale[0].sale_uid]
+    )
+  })
 
   return await getById(saleId)
 }
@@ -177,4 +216,4 @@ export const getSummary = async (dateFrom, dateTo, ticketNumber) => {
   return summary[0]
 }
 
-export default { getAll, getById, updatePaymentMethod, cancelSale, getSummary }
+export default { getAll, getById, updatePaymentMethod, cancelSale, getSummary, getVoidReasons }

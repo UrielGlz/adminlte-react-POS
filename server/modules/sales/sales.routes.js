@@ -21,6 +21,9 @@ router.post('/manual', requirePermission('manual_ticket.write'), manualTicketCon
 router.get('/reweigh-products', requirePermission('sales.write'), reweighConversionController.getReweighProducts)
 router.post('/:saleUid/convert-to-reweigh', requirePermission('sales.write'), reweighConversionController.convertToReweigh)
 
+// Void reasons catalog (must be before /:id to avoid conflicts)
+router.get('/void-reasons', requirePermission('sales.read'), salesController.getVoidReasons)
+
 // Reassignment routes (must be before /:id to avoid conflicts)
 router.get('/reassignment-reasons', requirePermission('sales.read'), reassignmentController.getReasons)
 router.get('/:saleUid/reassignment-history', requirePermission('sales.read'), reassignmentController.getHistory)

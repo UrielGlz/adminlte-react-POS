@@ -593,7 +593,7 @@ export const generatePdf = async (filters = {}) => {
           doc.text(`Credit Limit: ${formatCurrency(customer.credit_limit)}`, rightCol, yPos + 12)
           doc.text(`Current Balance: ${formatCurrency(customer.current_balance)}`, rightCol, yPos + 24)
           doc.text(`Available Credit: ${formatCurrency(customer.available_credit)}`, rightCol, yPos + 36)
-          doc.text(`Payment Terms: ${customer.payment_terms_days || 30} days`, rightCol, yPos + 48)
+          // doc.text(`Payment Terms: ${customer.payment_terms_days || 30} days`, rightCol, yPos + 48)
 
           if (customer.is_suspended) {
             doc.font('Helvetica-Bold').fillColor(dangerColor).text('⚠ ACCOUNT SUSPENDED', rightCol, yPos + 60)

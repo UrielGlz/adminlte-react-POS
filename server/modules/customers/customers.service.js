@@ -175,18 +175,22 @@ export const update = async (id, data, currentUserId = null) => {
   if (has_credit && credit) {
     const existingCredit = await query('SELECT credit_id FROM customer_credit WHERE customer_id = ?', [id])
     if (existingCredit.length > 0) {
+      // available_credit recalculated atomically: credit_limit - current_balance
+      // This ensures any change to credit_limit is immediately reflected in AR.
       await query(
-        `UPDATE customer_credit 
-         SET credit_type = ?, 
-             credit_limit = ?, 
-             payment_terms_days = ?, 
-             is_suspended = ?, 
+        `UPDATE customer_credit
+         SET credit_type = ?,
+             credit_limit = ?,
+             available_credit = ? - COALESCE(current_balance, 0),
+             payment_terms_days = ?,
+             is_suspended = ?,
              suspension_reason = ?,
-             updated_at = NOW() 
+             updated_at = NOW()
          WHERE customer_id = ?`,
         [
-          credit.credit_type || 'POSTPAID', 
-          credit.credit_limit || 0, 
+          credit.credit_type || 'POSTPAID',
+          credit.credit_limit || 0,
+          credit.credit_limit || 0,
           credit.payment_terms_days || 30,
           credit.is_suspended ? 1 : 0,
           credit.is_suspended ? (credit.suspension_reason || null) : null,
@@ -194,14 +198,15 @@ export const update = async (id, data, currentUserId = null) => {
         ]
       )
     } else {
+      // New credit record: current_balance is 0, so available_credit = credit_limit
       await query(
-        `INSERT INTO customer_credit (customer_id, credit_type, credit_limit, available_credit, payment_terms_days, is_suspended, suspension_reason) 
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO customer_credit (customer_id, credit_type, credit_limit, current_balance, available_credit, payment_terms_days, is_suspended, suspension_reason)
+         VALUES (?, ?, ?, 0.00, ?, ?, ?, ?)`,
         [
-          id, 
-          credit.credit_type || 'POSTPAID', 
-          credit.credit_limit || 0, 
-          credit.credit_limit || 0, 
+          id,
+          credit.credit_type || 'POSTPAID',
+          credit.credit_limit || 0,
+          credit.credit_limit || 0,
           credit.payment_terms_days || 30,
           credit.is_suspended ? 1 : 0,
           credit.is_suspended ? (credit.suspension_reason || null) : null

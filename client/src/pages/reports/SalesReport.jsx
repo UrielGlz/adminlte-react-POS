@@ -374,9 +374,10 @@ function SalesReport() {
                     <th>Plates</th>
                     <th>Payment</th>
                     <th className="text-end">Weight</th>
-                    <th className="text-end">Subtotal</th>
-                    <th className="text-end">Tax</th>
-                    <th className="text-end">Total</th>
+                    <th className="text-end">Sale Subtotal</th>
+                    <th className="text-end">Sale Tax</th>
+                    <th className="text-end">Sale Total</th>
+                    <th className="text-end">Pay Amount</th>
                     <th className="text-center">Status</th>
                   </tr>
                 </thead>
@@ -406,7 +407,8 @@ function SalesReport() {
                         <td className="text-end">{formatNumber(row.gross_weight)}</td>
                         <td className="text-end">{formatCurrency(row.subtotal)}</td>
                         <td className="text-end">{formatCurrency(row.tax_amount)}</td>
-                        <td className="text-end fw-bold">{formatCurrency(row.total_amount)}</td>
+                        <td className="text-end">{formatCurrency(row.total_amount)}</td>
+                        <td className="text-end fw-bold text-primary">{formatCurrency(row.payment_amount)}</td>
                         <td className="text-center">
                           <span className={`badge ${statusClass}`}>{row.status_label || row.status_code || '-'}</span>
                         </td>

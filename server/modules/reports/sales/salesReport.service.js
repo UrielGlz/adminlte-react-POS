@@ -14,40 +14,18 @@ const __dirname = path.dirname(__filename)
  * Sales Report Service
  */
 
-const normalizePaymentMethod = (value) => {
-  const v = String(value || '').trim().toLowerCase()
-
-  if (v === 'cash' || v.includes('cash')) return 'cash'
-
-  if (
-    v === 'card' ||
-    v.includes('card') ||
-    v.includes('credit') ||
-    v.includes('debit')
-  ) return 'card'
-
-  if (
-    v === 'business_account' ||
-    v === 'business account' ||
-    v.includes('business')
-  ) return 'business_account'
-
-  return null
-}
-
 const buildPaymentSummary = (data = []) => {
-  const summary = {
-    cash: { key: 'cash', label: 'Cash', count: 0, total: 0 },
-    business_account: { key: 'business_account', label: 'Business Account', count: 0, total: 0 },
-    card: { key: 'card', label: 'Card', count: 0, total: 0 }
-  }
+  // Map pm.code → summary key  (business → business_account for frontend compat)
+  const toKey = (code) => (code === 'business' ? 'business_account' : (code || 'other'))
 
+  const summary = {}
   data.forEach(row => {
-    const paymentKey = normalizePaymentMethod(row.payment_method || row.payment_method_code)
-    if (!paymentKey || !summary[paymentKey]) return
-
-    summary[paymentKey].count += 1
-    summary[paymentKey].total += parseFloat(row.total_amount) || 0
+    const key = toKey(row.payment_method_code)
+    if (!summary[key]) {
+      summary[key] = { key, label: row.payment_method || key, count: 0, total: 0 }
+    }
+    summary[key].count += 1
+    summary[key].total += parseFloat(row.payment_amount) || 0
   })
 
   return summary
@@ -63,6 +41,7 @@ const getLogoPath = (logoFilename) => {
 
 /**
  * Obtener datos del reporte
+ * Una fila por pago activo: ventas con split generan dos filas (una por método).
  */
 export const getData = async (filters = {}) => {
   const {
@@ -77,44 +56,55 @@ export const getData = async (filters = {}) => {
 
   const params = []
 
-  //Query corregida con DISTINCT para evitar duplicados
   let sql = `
-    SELECT DISTINCT
+    SELECT
       s.sale_id,
       t.ticket_number,
       s.created_at,
-      p.name as product_type,
-      c.account_name as customer_name,
+      prod.product_type,
+      prod.product_id   AS product_id_filter,
+      c.account_name    AS customer_name,
       sdi.driver_first_name,
       sdi.driver_last_name,
       sdi.trailer_number,
       sdi.tractor_number,
       sdi.vehicle_plates,
-      u.full_name as operator_name,
-      (SELECT pm2.name 
-       FROM payments pay2 
-       JOIN payment_methods pm2 ON pay2.method_id = pm2.method_id 
-       WHERE pay2.sale_uid = s.sale_uid 
-       LIMIT 1) as payment_method,
-      st.code as status_code,
-      st.label as status_label,
-      ssa.weight_lb as gross_weight,
+      u.full_name       AS operator_name,
+      pm.name           AS payment_method,
+      pm.code           AS payment_method_code,
+      pay.amount        AS payment_amount,
+      st.code           AS status_code,
+      st.label          AS status_label,
+      ssa.weight_lb     AS gross_weight,
       s.subtotal,
-      s.tax_total as tax_amount,
-      s.total as total_amount
+      s.tax_total       AS tax_amount,
+      s.total           AS total_amount
     FROM sales s
-    JOIN sale_lines sl ON s.sale_uid = sl.sale_uid
-    JOIN products p ON sl.product_id = p.product_id
     JOIN tickets t ON t.sale_uid = s.sale_uid
     JOIN sale_driver_info sdi ON s.sale_uid = sdi.sale_uid
     JOIN scale_session_axles ssa ON sdi.match_key = ssa.uuid_weight
+    JOIN (
+      SELECT sl.sale_uid, sl.product_id, p.name AS product_type
+      FROM sale_lines sl
+      INNER JOIN (
+        SELECT sale_uid, MIN(seq) AS min_seq
+        FROM sale_lines
+        GROUP BY sale_uid
+      ) first_line ON first_line.sale_uid = sl.sale_uid AND first_line.min_seq = sl.seq
+      INNER JOIN products p ON p.product_id = sl.product_id
+    ) prod ON s.sale_uid = prod.sale_uid
+    JOIN payments pay ON pay.sale_uid = s.sale_uid
+    JOIN payment_methods pm ON pay.method_id = pm.method_id
+    JOIN status_catalogo pay_st
+      ON pay.payment_status_id = pay_st.status_id
+     AND pay_st.module = 'PAYMENTS'
+     AND pay_st.code IN ('RECEIVED', 'PENDING')
     LEFT JOIN customers c ON sdi.account_number = c.account_number
     LEFT JOIN users u ON s.operator_id = u.user_id
     LEFT JOIN status_catalogo st ON s.sale_status_id = st.status_id AND st.module = 'SALES'
     WHERE 1=1
   `
 
-  // Filtro por rango de fechas
   if (date_from) {
     sql += ` AND DATE(s.created_at) >= ?`
     params.push(date_from)
@@ -124,55 +114,59 @@ export const getData = async (filters = {}) => {
     params.push(date_to)
   }
 
-  // Filtro por producto (Weigh / Reweigh)
   if (product_id && product_id !== 'all') {
-    sql += ` AND sl.product_id = ?`
+    sql += ` AND prod.product_id = ?`
     params.push(product_id)
   }
 
-  // Filtro por cliente
   if (customer_id && customer_id !== 'all') {
     sql += ` AND c.id_customer = ?`
     params.push(customer_id)
   }
 
-  // Filtro por operador
   if (operator_id && operator_id !== 'all') {
     sql += ` AND s.operator_id = ?`
     params.push(operator_id)
   }
 
-  // Filtro por método de pago - subconsulta para evitar duplicados
+  // Filtro por método: directo sobre el JOIN de payments — solo la fila del método filtrado
   if (payment_method_id && payment_method_id !== 'all') {
-    sql += ` AND EXISTS (SELECT 1 FROM payments pay WHERE pay.sale_uid = s.sale_uid AND pay.method_id = ?)`
+    sql += ` AND pay.method_id = ?`
     params.push(payment_method_id)
   }
 
-  // Filtro por estado
   if (status_id && status_id !== 'all') {
     sql += ` AND s.sale_status_id = ?`
     params.push(status_id)
   }
 
-  sql += ` ORDER BY s.created_at ASC, s.sale_id ASC`
+  sql += ` ORDER BY s.created_at ASC, s.sale_id ASC, pay.payment_id ASC`
 
   const data = await query(sql, params)
-  
+
+  // Totals sobre ventas únicas para evitar doble conteo en split
+  const uniqueSales = []
+  const seenSaleIds = new Set()
+  for (const row of data) {
+    if (!seenSaleIds.has(row.sale_id)) {
+      seenSaleIds.add(row.sale_id)
+      uniqueSales.push(row)
+    }
+  }
 
   const payment_summary = buildPaymentSummary(data)
 
   const totals = {
-    total_transactions: data.length,
-    total_weigh: data.filter(d => d.product_type === 'Weigh').length,
-    total_reweigh: data.filter(d => d.product_type === 'Reweigh').length,
-    total_gross_weight: data.reduce((sum, d) => sum + (parseFloat(d.gross_weight) || 0), 0),
-    total_subtotal: data.reduce((sum, d) => sum + (parseFloat(d.subtotal) || 0), 0),
-    total_tax: data.reduce((sum, d) => sum + (parseFloat(d.tax_amount) || 0), 0),
-    total_amount: data.reduce((sum, d) => sum + (parseFloat(d.total_amount) || 0), 0)
+    total_transactions: uniqueSales.length,
+    total_weigh:        uniqueSales.filter(d => d.product_type === 'Weigh').length,
+    total_reweigh:      uniqueSales.filter(d => d.product_type === 'Reweigh').length,
+    total_gross_weight: uniqueSales.reduce((sum, d) => sum + (parseFloat(d.gross_weight) || 0), 0),
+    total_subtotal:     uniqueSales.reduce((sum, d) => sum + (parseFloat(d.subtotal) || 0), 0),
+    total_tax:          uniqueSales.reduce((sum, d) => sum + (parseFloat(d.tax_amount) || 0), 0),
+    total_amount:       data.reduce((sum, d) => sum + (parseFloat(d.payment_amount) || 0), 0)
   }
 
   return { data, totals, payment_summary }
-
 }
 
 /**
@@ -322,16 +316,16 @@ export const generatePdf = async (filters = {}) => {
       // Tabla config — 15 columnas
       // Ticket#, Type, Date, Customer, Driver, Trailer#, Tractor#, Scale Op, Plates, Payment, Weight, Subtotal, Tax, Total, Status
       const tableLeft = marginLeft
-      const colWidths = [42, 35, 58, 58, 52, 35, 35, 50, 38, 42, 42, 42, 38, 42, 43]
+      const colWidths = [42, 35, 58, 58, 52, 35, 35, 50, 38, 42, 42, 38, 34, 42, 42, 43]
       const tableWidth = colWidths.reduce((a, b) => a + b, 0)
-      const headers = ['Ticket #', 'Type', 'Date', 'Customer', 'Driver', 'Trailer#', 'Tractor#', 'Scale Op', 'Plates', 'Payment', 'Weight', 'Subtotal', 'Tax', 'Total', 'Status']
+      const headers = ['Ticket #', 'Type', 'Date', 'Customer', 'Driver', 'Trailer#', 'Tractor#', 'Scale Op', 'Plates', 'Payment', 'Weight', 'Sale Sub', 'Sale Tax', 'Sale Total', 'Pay Amt', 'Status']
 
       const drawTableHeader = (y) => {
         doc.rect(tableLeft, y, tableWidth, 14).fill(headerBg)
         doc.fontSize(6).fillColor('#FFFFFF').font('Helvetica-Bold')
         let xPos = tableLeft + 2
         headers.forEach((header, i) => {
-          const align = (i >= 10 && i <= 13) ? 'right' : (i === 14 ? 'center' : 'left')
+          const align = (i >= 10 && i <= 14) ? 'right' : (i === 15 ? 'center' : 'left')
           doc.text(header, xPos, y + 4, { width: colWidths[i] - 4, align })
           xPos += colWidths[i]
         })
@@ -387,6 +381,7 @@ export const generatePdf = async (filters = {}) => {
           formatCurrency(row.subtotal),
           formatCurrency(row.tax_amount),
           formatCurrency(row.total_amount),
+          formatCurrency(row.payment_amount),
           row.status_label || row.status_code || '-'
         ]
 
@@ -396,12 +391,12 @@ export const generatePdf = async (filters = {}) => {
           if (i === 1) {
             const typeColor = cell === 'Weigh' ? '#17a2b8' : '#6f42c1'
             doc.fillColor(typeColor).font('Helvetica-Bold')
-          } else if (i === 14) {
+          } else if (i === 15) {
             doc.fillColor(statusColor).font('Helvetica-Bold')
           } else {
             doc.fillColor('#000000').font('Helvetica')
           }
-          const align = (i >= 10 && i <= 13) ? 'right' : (i === 14 ? 'center' : 'left')
+          const align = (i >= 10 && i <= 14) ? 'right' : (i === 15 ? 'center' : 'left')
           doc.text(String(cell), xPos, yPos + 4, { width: colWidths[i] - 4, align })
           xPos += colWidths[i]
         })
@@ -543,12 +538,12 @@ export const generateExcel = async (filters = {}) => {
   })
 
   // Header
-  worksheet.mergeCells('A1:O1')
+  worksheet.mergeCells('A1:P1')
   worksheet.getCell('A1').value = settings.companyName
   worksheet.getCell('A1').font = { size: 16, bold: true, color: { argb: '2E75B6' } }
   worksheet.getCell('A1').alignment = { horizontal: 'center' }
 
-  worksheet.mergeCells('A2:O2')
+  worksheet.mergeCells('A2:P2')
   worksheet.getCell('A2').value = 'Sales Report'
   worksheet.getCell('A2').font = { size: 12, bold: true }
   worksheet.getCell('A2').alignment = { horizontal: 'center' }
@@ -558,21 +553,21 @@ export const generateExcel = async (filters = {}) => {
     filters.date_to ? `To: ${filters.date_to}` : ''
   ].filter(Boolean).join(' | ') || 'All records'
 
-  worksheet.mergeCells('A3:O3')
+  worksheet.mergeCells('A3:P3')
   worksheet.getCell('A3').value = `Generated: ${formatGeneratedTimestamp()} | ${filterText}`
   worksheet.getCell('A3').font = { size: 9, italic: true, color: { argb: '666666' } }
   worksheet.getCell('A3').alignment = { horizontal: 'center' }
 
   worksheet.addRow([])
 
-  // Column widths — 15 columns
-  // Ticket#, Type, Date, Customer, Driver, Trailer#, Tractor#, Scale Op, Plates, Payment, Weight, Subtotal, Tax, Total, Status
-  const colWidths = [12, 10, 20, 20, 18, 12, 12, 16, 12, 14, 12, 12, 12, 12, 12]
+  // Column widths — 16 columns
+  // Ticket#, Type, Date, Customer, Driver, Trailer#, Tractor#, Scale Op, Plates, Payment, Weight, Sale Subtotal, Sale Tax, Sale Total, Pay Amount, Status
+  const colWidths = [12, 10, 20, 20, 18, 12, 12, 16, 12, 14, 12, 14, 12, 12, 12, 12]
   colWidths.forEach((w, i) => worksheet.getColumn(i + 1).width = w)
 
   // Table header
   const headerRow = 5
-  const headers = ['Ticket #', 'Type', 'Date', 'Customer', 'Driver', 'Trailer#', 'Tractor#', 'Scale Op', 'Plates', 'Payment', 'Weight', 'Subtotal', 'Tax', 'Total', 'Status']
+  const headers = ['Ticket #', 'Type', 'Date', 'Customer', 'Driver', 'Trailer#', 'Tractor#', 'Scale Op', 'Plates', 'Payment', 'Weight', 'Sale Subtotal', 'Sale Tax', 'Sale Total', 'Pay Amount', 'Status']
 
   headers.forEach((h, i) => {
     const cell = worksheet.getCell(headerRow, i + 1)
@@ -610,6 +605,7 @@ export const generateExcel = async (filters = {}) => {
       parseFloat(row.subtotal) || 0,
       parseFloat(row.tax_amount) || 0,
       parseFloat(row.total_amount) || 0,
+      parseFloat(row.payment_amount) || 0,
       statusLabel
     ]
 
@@ -628,13 +624,13 @@ export const generateExcel = async (filters = {}) => {
         right: { style: 'thin', color: { argb: 'CCCCCC' } }
       }
 
-      // Currency format para subtotal, tax, total (cols 11,12,13 = indices 11,12,13)
-      if (colIndex >= 11 && colIndex <= 13) {
+      // Currency format: Sale Subtotal, Sale Tax, Sale Total, Pay Amount (indices 11–14)
+      if (colIndex >= 11 && colIndex <= 14) {
         cell.numFmt = '"$"#,##0.00'
         cell.alignment = { horizontal: 'right' }
       }
 
-      // Number format for weight (col 10 = index 10)
+      // Number format for weight (index 10)
       if (colIndex === 10) {
         cell.numFmt = '#,##0.00'
         cell.alignment = { horizontal: 'right' }
@@ -646,8 +642,8 @@ export const generateExcel = async (filters = {}) => {
         cell.font = { bold: true, color: { argb: typeColor } }
       }
 
-      // Status color
-      if (colIndex === 14) {
+      // Status color (index 15)
+      if (colIndex === 15) {
         cell.font = { bold: true, color: { argb: statusColor } }
         cell.alignment = { horizontal: 'center' }
       }

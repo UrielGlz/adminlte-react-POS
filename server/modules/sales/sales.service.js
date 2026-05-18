@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { query, transaction } from '../../config/database.js'
 import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors.js'
 
@@ -91,7 +92,8 @@ export const getById = async (id) => {
 
   // Get payments
   const payments = await query(`
-    SELECT pay.*, pm.name as method_name, ps.label as status_label
+    SELECT pay.*, pm.name as method_name, pm.code as method_code,
+           ps.label as status_label, ps.code as payment_status_code
     FROM payments pay
     LEFT JOIN payment_methods pm ON pay.method_id = pm.method_id
     LEFT JOIN status_catalogo ps ON pay.payment_status_id = ps.status_id
@@ -120,12 +122,125 @@ export const getById = async (id) => {
   return sale
 }
 
-export const updatePaymentMethod = async (saleId, newMethodId) => {
-  const sale = await query('SELECT sale_uid FROM sales WHERE sale_id = ?', [saleId])
-  if (sale.length === 0) throw new NotFoundError('Sale not found')
+export const updatePaymentMethod = async (saleId, body, userId = null) => {
+  const { mode, method_id, payments: splitPayments } = body
 
-  await query('UPDATE payments SET method_id = ?, updated_at = NOW() WHERE sale_uid = ?', [newMethodId, sale[0].sale_uid])
-  
+  const saleRows = await query(
+    'SELECT sale_id, sale_uid, total, currency, sale_status_id FROM sales WHERE sale_id = ?',
+    [saleId]
+  )
+  if (saleRows.length === 0) throw new NotFoundError('Sale not found')
+  const sale = saleRows[0]
+
+  const voidedSaleStatus = await query(
+    `SELECT status_id FROM status_catalogo WHERE module = 'SALES' AND code = 'VOID' AND is_active = 1 LIMIT 1`
+  )
+  if (voidedSaleStatus.length > 0 && sale.sale_status_id === voidedSaleStatus[0].status_id) {
+    throw new ConflictError('Cannot update payment method on a voided sale')
+  }
+
+  // Fetch current active payments once — used by multiple guards below
+  const currentActivePayments = await query(
+    `SELECT pm.code
+     FROM payments pay
+     LEFT JOIN payment_methods pm ON pay.method_id = pm.method_id
+     WHERE pay.sale_uid = ?
+       AND pay.payment_status_id NOT IN (
+         SELECT status_id FROM status_catalogo
+         WHERE module = 'PAYMENTS' AND code IN ('VOIDED', 'REFUNDED') AND is_active = 1
+       )`,
+    [sale.sale_uid]
+  )
+
+  // Business Account tickets: block any change (split or single)
+  if (currentActivePayments.some(p => p.code === 'business')) {
+    throw new ConflictError('Business Account tickets cannot be split or changed to regular payment methods')
+  }
+
+  // Prevent reverting split payment back to single
+  const isCurrentlySplit = currentActivePayments.length > 1
+  if (mode !== 'split' && isCurrentlySplit) {
+    throw new ConflictError('This sale already has split payment and cannot be changed back to single payment')
+  }
+
+  if (mode === 'split') {
+    // --- Split validations ---
+    if (!Array.isArray(splitPayments) || splitPayments.length < 2) {
+      throw new BadRequestError('Split payment requires at least 2 payment methods')
+    }
+
+    const methodIds = splitPayments.map(p => Number(p.method_id))
+    if (new Set(methodIds).size !== methodIds.length) {
+      throw new BadRequestError('Duplicate payment methods are not allowed in split payment')
+    }
+
+    for (const p of splitPayments) {
+      if (!p.amount || Number(p.amount) <= 0) {
+        throw new BadRequestError('All payment amounts must be greater than zero')
+      }
+    }
+
+    // Only cash and card are allowed in split
+    for (const p of splitPayments) {
+      const methods = await query(
+        `SELECT method_id FROM payment_methods WHERE method_id = ? AND is_active = 1 AND code IN ('cash', 'card')`,
+        [p.method_id]
+      )
+      if (methods.length === 0) throw new BadRequestError('Only Cash and Card are allowed in split payment')
+    }
+
+    // Validate total matches (cents to avoid float issues)
+    const splitTotalCents = splitPayments.reduce((sum, p) => sum + Math.round(Number(p.amount) * 100), 0)
+    const saleTotalCents  = Math.round(Number(sale.total) * 100)
+    if (splitTotalCents !== saleTotalCents) {
+      throw new BadRequestError('Split payment amounts must equal the sale total')
+    }
+
+    const receivedRows = await query(
+      `SELECT status_id FROM status_catalogo WHERE module = 'PAYMENTS' AND code = 'RECEIVED' AND is_active = 1 LIMIT 1`
+    )
+    const voidedRows = await query(
+      `SELECT status_id FROM status_catalogo WHERE module = 'PAYMENTS' AND code = 'VOIDED' AND is_active = 1 LIMIT 1`
+    )
+    if (receivedRows.length === 0) throw new BadRequestError('PAYMENTS/RECEIVED status not found')
+    if (voidedRows.length === 0)   throw new BadRequestError('PAYMENTS/VOIDED status not found')
+
+    const receivedStatusId = receivedRows[0].status_id
+    const voidedStatusId   = voidedRows[0].status_id
+    const currency         = sale.currency || 'USD'
+
+    await transaction(async (conn) => {
+      // Void all existing payments
+      await conn.query(
+        `UPDATE payments SET payment_status_id = ?, amount_applied = 0.00, updated_at = NOW() WHERE sale_uid = ?`,
+        [voidedStatusId, sale.sale_uid]
+      )
+      // Insert new split payments
+      for (const p of splitPayments) {
+        const paymentUid = randomUUID()
+        await conn.query(
+          `INSERT INTO payments
+             (payment_uid, sale_uid, method_id, payment_status_id, amount, amount_applied,
+              currency, exchange_rate, received_by, received_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, 0.00, ?, 1.00, ?, NOW(), NOW(), NOW())`,
+          [paymentUid, sale.sale_uid, p.method_id, receivedStatusId, Number(p.amount), currency, userId]
+        )
+      }
+      // Sync sale financials
+      await conn.query(
+        `UPDATE sales SET amount_paid = ?, balance_due = 0.00, updated_at = NOW() WHERE sale_id = ?`,
+        [sale.total, saleId]
+      )
+    })
+  } else {
+    // Single payment — maintain existing behavior
+    if (!method_id) throw new BadRequestError('method_id is required')
+    await query(
+      'UPDATE payments SET method_id = ?, updated_at = NOW() WHERE sale_uid = ?',
+      [method_id, sale.sale_uid]
+    )
+  }
+
   return await getById(saleId)
 }
 

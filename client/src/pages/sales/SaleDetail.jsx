@@ -7,6 +7,7 @@ import ReassignCustomerModal from './ReassignCustomerModal'
 import ReassignmentHistoryModal from './ReassignmentHistoryModal'
 import ConvertToReweighModal from './ConvertToReweighModal'
 import CancelSaleModal from './CancelSaleModal'
+import ChangePaymentMethodModal from './ChangePaymentMethodModal'
 
 function SaleDetail() {
   const { id } = useParams()
@@ -18,6 +19,7 @@ function SaleDetail() {
   const [showHistoryModal, setShowHistoryModal] = useState(false)
   const [showConvertModal, setShowConvertModal] = useState(false)
   const [showCancelModal, setShowCancelModal] = useState(false)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [reassignmentCount, setReassignmentCount] = useState(0)
 
   useEffect(() => {
@@ -63,28 +65,10 @@ function SaleDetail() {
     }
   }
 
-  const handleChangePaymentMethod = async () => {
-    const options = paymentMethods.reduce((acc, pm) => {
-      acc[pm.method_id] = pm.name
-      return acc
-    }, {})
-
-    const { value } = await Swal.fire({
-      title: 'Change Payment Method',
-      input: 'select',
-      inputOptions: options,
-      showCancelButton: true
-    })
-
-    if (value) {
-      try {
-        await api.put(`/sales/${id}/payment-method`, { method_id: value })
-        Swal.fire({ icon: 'success', title: 'Updated!', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 })
-        fetchSale()
-      } catch (error) {
-        Swal.fire('Error', error.response?.data?.message || 'Could not update', 'error')
-      }
-    }
+  const handlePaymentMethodSuccess = (updatedSale) => {
+    setSale(updatedSale)
+    setShowPaymentModal(false)
+    Swal.fire({ icon: 'success', title: 'Payment method updated', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 })
   }
 
   const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0)
@@ -97,11 +81,23 @@ function SaleDetail() {
     return colors[code] || 'secondary'
   }
 
+  const getPaymentStatusBadge = (code) => {
+    const colors = { 'RECEIVED': 'success', 'PENDING': 'warning', 'VOIDED': 'secondary', 'REFUNDED': 'info' }
+    return colors[code] || 'secondary'
+  }
+
   if (loading) return <div className="container-fluid p-4 text-center"><div className="spinner-border text-primary"></div></div>
   if (!sale) return null
 
   const isCancelled = sale.status_code === 'CANCELLED'
   const isReweigh = Number(sale.is_reweigh) === 1
+
+  const currentPayments = (sale.payments || []).filter(
+    p => p.payment_status_code !== 'VOIDED' && p.payment_status_code !== 'REFUNDED'
+  )
+  const voidedPayments = (sale.payments || []).filter(
+    p => p.payment_status_code === 'VOIDED' || p.payment_status_code === 'REFUNDED'
+  )
 
   return (
     <div className="container-fluid p-4">
@@ -118,7 +114,7 @@ function SaleDetail() {
         <div>
           {!isCancelled && (
             <>
-              <button className="btn btn-outline-primary me-2" onClick={handleChangePaymentMethod}>
+              <button className="btn btn-outline-primary me-2" onClick={() => setShowPaymentModal(true)}>
                 <i className="bi bi-credit-card me-1"></i>Change Payment
               </button>
               <button className="btn btn-outline-warning me-2" onClick={() => setShowReassignModal(true)}>
@@ -207,6 +203,7 @@ function SaleDetail() {
           <div className="card shadow-sm mb-3">
             <div className="card-header"><h5 className="mb-0">Payments</h5></div>
             <div className="card-body p-0">
+              {/* Current active payments */}
               <table className="table mb-0">
                 <thead className="table-light">
                   <tr>
@@ -218,17 +215,41 @@ function SaleDetail() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sale.payments?.map(pay => (
+                  {currentPayments.map(pay => (
                     <tr key={pay.payment_id}>
                       <td><i className="bi bi-credit-card me-2"></i>{pay.method_name}</td>
                       <td className="text-end fw-bold">{formatCurrency(pay.amount)}</td>
                       <td>{pay.reference_number || '-'}</td>
-                      <td><span className="badge bg-success">{pay.status_label}</span></td>
+                      <td><span className={`badge bg-${getPaymentStatusBadge(pay.payment_status_code)}`}>{pay.status_label}</span></td>
                       <td><small>{formatDate(pay.received_at)}</small></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+
+              {/* Previous / Voided payments — only shown when they exist */}
+              {voidedPayments.length > 0 && (
+                <>
+                  <div className="px-3 py-2 bg-light border-top border-bottom">
+                    <small className="text-muted fw-semibold">
+                      <i className="bi bi-clock-history me-1"></i>Previous / Voided Payments
+                    </small>
+                  </div>
+                  <table className="table table-sm mb-0 text-muted">
+                    <tbody>
+                      {voidedPayments.map(pay => (
+                        <tr key={pay.payment_id}>
+                          <td><i className="bi bi-credit-card me-2"></i>{pay.method_name}</td>
+                          <td className="text-end"><s>{formatCurrency(pay.amount)}</s></td>
+                          <td>{pay.reference_number || '-'}</td>
+                          <td><span className={`badge bg-${getPaymentStatusBadge(pay.payment_status_code)}`}>{pay.status_label}</span></td>
+                          <td><small>{formatDate(pay.received_at)}</small></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -351,6 +372,16 @@ function SaleDetail() {
           sale={sale}
           onClose={() => setShowCancelModal(false)}
           onSuccess={handleCancelConfirm}
+        />
+      )}
+
+      {/* Change Payment Method Modal */}
+      {showPaymentModal && sale && (
+        <ChangePaymentMethodModal
+          sale={sale}
+          paymentMethods={paymentMethods}
+          onClose={() => setShowPaymentModal(false)}
+          onSuccess={handlePaymentMethodSuccess}
         />
       )}
     </div>

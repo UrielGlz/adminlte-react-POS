@@ -25,8 +25,7 @@ export const getById = async (req, res, next) => {
 
 export const updatePaymentMethod = async (req, res, next) => {
   try {
-    const { method_id } = req.body
-    const item = await salesService.updatePaymentMethod(req.params.id, method_id)
+    const item = await salesService.updatePaymentMethod(req.params.id, req.body, req.user?.userId)
     success(res, item, 'Payment method updated')
   } catch (error) { next(error) }
 }

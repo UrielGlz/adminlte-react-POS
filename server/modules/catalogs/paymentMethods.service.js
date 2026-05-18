@@ -8,12 +8,13 @@ import { NotFoundError, ConflictError } from '../../utils/errors.js'
 
 export const getAll = async (includeInactive = false) => {
   let sql = `
-    SELECT 
+    SELECT
       pm.method_id,
       pm.code,
       pm.name,
       pm.is_cash,
       pm.allow_reference,
+      pm.is_pos_enabled,
       pm.is_active,
       pm.created_at,
       pm.updated_at,

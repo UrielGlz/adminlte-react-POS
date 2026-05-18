@@ -397,7 +397,7 @@ function SalesReport() {
                           </span>
                         </td>
                         <td style={{ whiteSpace: 'nowrap' }}>{formatDate(row.created_at)}</td>
-                        <td>{row.customer_name || <span className="text-muted">Walk-in</span>}</td>
+                        <td>{row.customer_name || 'N/A'}</td>
                         <td>{driverName}</td>
                         <td>{row.trailer_number || '-'}</td>
                         <td>{row.tractor_number || '-'}</td>

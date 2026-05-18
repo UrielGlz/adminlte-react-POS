@@ -42,8 +42,8 @@ export const cancelSale = async (req, res, next) => {
 
   try {
    
-    const { void_reason_id } = req.body
-    const item = await salesService.cancelSale(req.params.id, void_reason_id, req.user.userId)
+    const { void_reason_id, void_reason_note } = req.body
+    const item = await salesService.cancelSale(req.params.id, void_reason_id, void_reason_note, req.user.userId)
     success(res, item, 'Sale cancelled')
   } catch (error) { next(error) }
 }

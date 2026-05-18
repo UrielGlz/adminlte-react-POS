@@ -57,10 +57,12 @@ export const getAll = async (filters = {}) => {
 
 export const getById = async (id) => {
   const sales = await query(`
-    SELECT s.*, st.code as status_code, st.label as status_label, u.full_name as operator_name
+    SELECT s.*, st.code as status_code, st.label as status_label, u.full_name as operator_name,
+           vr.code as void_reason_code, vr.label as void_reason_label
     FROM sales s
     LEFT JOIN status_catalogo st ON s.sale_status_id = st.status_id
     LEFT JOIN users u ON s.operator_id = u.user_id
+    LEFT JOIN void_reasons vr ON s.void_reason_id = vr.void_reason_id
     WHERE s.sale_id = ?
   `, [id])
 
@@ -136,15 +138,24 @@ export const getVoidReasons = async () => {
   )
 }
 
-export const cancelSale = async (saleId, reasonId, userId) => {
+export const cancelSale = async (saleId, reasonId, voidReasonNote, userId) => {
   // --- Validations (read-only, outside transaction) ---
   if (!reasonId) throw new BadRequestError('void_reason_id is required')
 
   const reason = await query(
-    'SELECT void_reason_id FROM void_reasons WHERE void_reason_id = ? AND is_active = 1',
+    'SELECT void_reason_id, code FROM void_reasons WHERE void_reason_id = ? AND is_active = 1',
     [reasonId]
   )
   if (reason.length === 0) throw new BadRequestError('Invalid or inactive void reason')
+
+  const isOther = reason[0].code === 'OTHER'
+  let noteToSave = null
+  if (isOther) {
+    const trimmed = voidReasonNote ? String(voidReasonNote).trim() : ''
+    if (!trimmed) throw new BadRequestError('A note is required when reason is Other')
+    if (trimmed.length > 500) throw new BadRequestError('Void note must be 500 characters or less')
+    noteToSave = trimmed
+  }
 
   const sale = await query('SELECT sale_id, sale_uid, sale_status_id FROM sales WHERE sale_id = ?', [saleId])
   if (sale.length === 0) throw new NotFoundError('Sale not found')
@@ -170,8 +181,8 @@ export const cancelSale = async (saleId, reasonId, userId) => {
   // --- Atomic writes ---
   await transaction(async (conn) => {
     await conn.query(
-      `UPDATE sales SET sale_status_id = ?, void_reason_id = ?, voided_at = NOW(), voided_by_user = ?, updated_at = NOW() WHERE sale_id = ?`,
-      [cancelledStatusId, reasonId, userId, saleId]
+      `UPDATE sales SET sale_status_id = ?, void_reason_id = ?, void_reason_note = ?, voided_at = NOW(), voided_by_user = ?, updated_at = NOW() WHERE sale_id = ?`,
+      [cancelledStatusId, reasonId, noteToSave, userId, saleId]
     )
     await conn.query(
       `UPDATE payments SET payment_status_id = ?, amount_applied = 0.00, updated_at = NOW() WHERE sale_uid = ?`,

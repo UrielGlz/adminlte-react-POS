@@ -52,9 +52,9 @@ function SaleDetail() {
     } catch (error) { console.error(error) }
   }
 
-  const handleCancelConfirm = async (voidReasonId) => {
+  const handleCancelConfirm = async ({ void_reason_id, void_reason_note }) => {
     try {
-      await api.put(`/sales/${id}/cancel`, { void_reason_id: voidReasonId })
+      await api.put(`/sales/${id}/cancel`, { void_reason_id, void_reason_note })
       setShowCancelModal(false)
       Swal.fire({ icon: 'success', title: 'Sale cancelled', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 })
       fetchSale()
@@ -297,6 +297,25 @@ function SaleDetail() {
 
             </div>
           </div>
+
+          {/* Void Info */}
+          {sale.void_reason_id && (
+            <div className="card shadow-sm mt-3 border-danger">
+              <div className="card-header bg-danger text-white py-2">
+                <h6 className="mb-0"><i className="bi bi-x-octagon me-2"></i>Void Information</h6>
+              </div>
+              <div className="card-body small">
+                <p className="mb-1"><b>Voided At:</b> {formatDate(sale.voided_at)}</p>
+                <p className="mb-1"><b>Voided By:</b> {sale.voided_by_user || '-'}</p>
+                <p className={sale.void_reason_note ? 'mb-1' : 'mb-0'}>
+                  <b>Void Reason:</b> {sale.void_reason_label || '-'}
+                </p>
+                {sale.void_reason_note && (
+                  <p className="mb-0"><b>Void Note:</b> {sale.void_reason_note}</p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

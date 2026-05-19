@@ -161,8 +161,8 @@ function PaymentDetail() {
         </div>
       </div>
 
-      {/* Allocations */}
-      <div className="card">
+      {/* Active Allocations */}
+      <div className="card mb-4">
         <div className="card-header">
           <i className="bi bi-list-check me-2"></i>
           Applied to Transactions ({payment.allocations?.length || 0})
@@ -176,23 +176,25 @@ function PaymentDetail() {
                 <th>Date</th>
                 <th>Scale Op</th>
                 <th>Driver</th>
-
                 <th className="text-end">Amount Applied</th>
                 <th>Applied At</th>
               </tr>
             </thead>
             <tbody>
+              {payment.allocations?.length === 0 && (
+                <tr>
+                  <td colSpan="7" className="text-center text-muted py-3">
+                    No active allocations
+                  </td>
+                </tr>
+              )}
               {payment.allocations?.map((a, index) => (
                 <tr key={a.allocation_id}>
                   <td>{index + 1}</td>
                   <td><strong>{a.ticket_number || a.sale_uid}</strong></td>
-
                   <td>{formatDateTimeCompact(a.printed_at)}</td>
-
                   <td>{a.operator_user}</td>
                   <td>{a.driver_name}</td>
-
-
                   <td className="text-end text-success">{formatCurrency(a.amount_applied)}</td>
                   <td>{formatDateTimeCompact(a.created_at)}</td>
                 </tr>
@@ -200,20 +202,58 @@ function PaymentDetail() {
             </tbody>
             <tfoot className="table-light">
               <tr>
-                <th></th>
-                <th></th>
-                <th></th>
-
-
-                <th colSpan="2">Total Applied</th>
+                <th colSpan="5">Total Applied</th>
                 <th className="text-end text-success">{formatCurrency(payment.amount_applied)}</th>
-                <th></th>
                 <th></th>
               </tr>
             </tfoot>
           </table>
         </div>
       </div>
+
+      {/* Reversed Allocations — shown only when present */}
+      {payment.reversed_allocations?.length > 0 && (
+        <div className="card mb-4">
+          <div className="card-header text-muted">
+            <i className="bi bi-arrow-counterclockwise me-2"></i>
+            Reversed Transactions ({payment.reversed_allocations.length})
+            <span className="ms-2 badge bg-secondary">Not counted in applied total</span>
+          </div>
+          <div className="table-responsive">
+            <table className="table mb-0">
+              <thead className="table-light">
+                <tr>
+                  <th>#</th>
+                  <th>Ticket #</th>
+                  <th>Date</th>
+                  <th>Scale Op</th>
+                  <th>Driver</th>
+                  <th className="text-end">Original Amount</th>
+                  <th>Reversed At</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payment.reversed_allocations.map((a, index) => (
+                  <tr key={a.allocation_id} className="text-muted">
+                    <td>{index + 1}</td>
+                    <td>
+                      <span className="text-decoration-line-through">{a.ticket_number || a.sale_uid}</span>
+                      {' '}<span className="badge bg-secondary">Reversed</span>
+                    </td>
+                    <td>{formatDateTimeCompact(a.printed_at)}</td>
+                    <td>{a.operator_user}</td>
+                    <td>{a.driver_name}</td>
+                    <td className="text-end text-decoration-line-through">{formatCurrency(a.amount_applied)}</td>
+                    <td>{formatDateTimeCompact(a.reversed_at)}</td>
+                    <td className="small">{a.reversal_note || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

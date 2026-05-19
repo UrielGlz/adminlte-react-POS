@@ -9,6 +9,7 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
   const [selectedCustomer, setSelectedCustomer] = useState(null)
   const [reasonId, setReasonId] = useState('')
   const [notes, setNotes] = useState('')
+  const [walkInMode, setWalkInMode] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [loadingData, setLoadingData] = useState(true)
 
@@ -45,6 +46,8 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
     Number(p.method_id) === 3 || String(p.method_name || '').toLowerCase().includes('business')
   )
   const saleTotal = parseFloat(sale?.total) || 0
+  const sourceCustomerFromList = customers.find(c => c.account_number === currentAccountNumber)
+  const sourceIsPrepaid = sourceCustomerFromList?.credit_type === 'PREPAID'
 
   const filtered = customers.filter(c => {
     if (c.account_number === currentAccountNumber) return false
@@ -61,45 +64,63 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
     setSearch('')
   }
 
-  const canSubmit =
-    selectedCustomer &&
-    reasonId &&
-    !submitting &&
-    (!isBusinessPayment || parseFloat(selectedCustomer.available_credit) >= saleTotal) &&
-    (!isBusinessPayment || !selectedCustomer.is_suspended)
+  const canSubmit = (() => {
+    if (submitting || !reasonId) return false
+    if (walkInMode) return true
+    if (!selectedCustomer) return false
+    if (isBusinessPayment && selectedCustomer.is_suspended) return false
+    return true
+  })()
 
   const handleSubmit = async () => {
-    if (!selectedCustomer) return
+    if (!walkInMode && !selectedCustomer) return
     if (!reasonId) {
-      Swal.fire('Validation', 'A reassignment reason is required.', 'warning')
+      Swal.fire('Validation', 'Please select a reassignment reason.', 'warning')
       return
     }
 
-    const confirm = await Swal.fire({
-      title: hasSourceCustomer ? 'Confirm Reassignment' : 'Confirm Customer Assignment',
-      html: `
-        <p class="mb-1">Move ticket <b>#${sale.ticket_number || sale.sale_id}</b> (${formatCurrency(saleTotal)})</p>
-        <p class="mb-1">From: <b>${currentCustomerLabel}</b></p>
-        <p class="mb-0">To: <b>${selectedCustomer.account_number} / ${selectedCustomer.account_name}</b></p>
-      `,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonText: hasSourceCustomer ? 'Yes, reassign' : 'Yes, assign',
-      confirmButtonColor: '#0d6efd'
-    })
+    const confirmResult = walkInMode
+      ? await Swal.fire({
+          title: 'Convert to Walk-in Customer',
+          html: `
+            <p class="mb-1">Ticket <b>#${sale.ticket_number || sale.sale_id}</b> — ${formatCurrency(saleTotal)}</p>
+            <p class="mb-1">From: <b>${currentCustomerLabel}</b></p>
+            <p class="mb-2">To: <b>Walk-in Customer</b></p>
+            <div class="alert alert-warning py-1 mb-0 small text-start">
+              The PREPAID balance of <b>${formatCurrency(saleTotal)}</b> will be returned to the source account.
+              This action cannot be undone without another reassignment.
+            </div>
+          `,
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonText: 'Yes, convert to Walk-in',
+          confirmButtonColor: '#dc3545'
+        })
+      : await Swal.fire({
+          title: hasSourceCustomer ? 'Confirm Reassignment' : 'Confirm Customer Assignment',
+          html: `
+            <p class="mb-1">Move ticket <b>#${sale.ticket_number || sale.sale_id}</b> (${formatCurrency(saleTotal)})</p>
+            <p class="mb-1">From: <b>${currentCustomerLabel}</b></p>
+            <p class="mb-0">To: <b>${selectedCustomer.account_number} / ${selectedCustomer.account_name}</b></p>
+          `,
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonText: hasSourceCustomer ? 'Yes, reassign' : 'Yes, assign',
+          confirmButtonColor: '#0d6efd'
+        })
 
-    if (!confirm.isConfirmed) return
+    if (!confirmResult.isConfirmed) return
 
     try {
       setSubmitting(true)
-      const res = await api.post(`/sales/${sale.sale_uid}/reassign-customer`, {
-        newCustomerId: selectedCustomer.id_customer,
-        reassignmentReasonId: Number(reasonId),
-        reasonNotes: notes || null
-      })
+      const payload = walkInMode
+        ? { newCustomerId: null, targetType: 'WALK_IN', reassignmentReasonId: Number(reasonId), reasonNotes: notes || null }
+        : { newCustomerId: selectedCustomer.id_customer, reassignmentReasonId: Number(reasonId), reasonNotes: notes || null }
+
+      const res = await api.post(`/sales/${sale.sale_uid}/reassign-customer`, payload)
       Swal.fire({
         icon: 'success',
-        title: res.data?.message || 'Customer reassignment completed successfully.',
+        title: res.data?.data?.message || res.data?.message || 'Operation completed successfully.',
         toast: true,
         position: 'top-end',
         showConfirmButton: false,
@@ -107,7 +128,7 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
       })
       onSuccess()
     } catch (err) {
-      Swal.fire('Error', err.response?.data?.message || 'Could not reassign customer.', 'error')
+      Swal.fire('Error', err.response?.data?.message || 'Could not complete the operation.', 'error')
     } finally {
       setSubmitting(false)
     }
@@ -150,10 +171,46 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
 
                   {!isBusinessPayment && (
                     <div className="alert alert-secondary py-2 small">
-                      This sale is not using Business Account. Changing the customer will update the sale and audit history only, without affecting credit balances.
+                      Non-Business Account correction: only the sale record and audit history will be updated. Credit balances will not change.
+                    </div>
+                  )}
+                  {isBusinessPayment && !walkInMode && (
+                    <div className="alert alert-info py-2 small">
+                      Business Account correction: credit balances will be updated for both customers.
                     </div>
                   )}
 
+                  {/* Walk-in toggle — only for PREPAID Business Account sales */}
+                  {isBusinessPayment && sourceIsPrepaid && (
+                    <div className="mb-3">
+                      <div className="btn-group w-100" role="group">
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${!walkInMode ? 'btn-primary' : 'btn-outline-primary'}`}
+                          onClick={() => { setWalkInMode(false); setSelectedCustomer(null) }}
+                          disabled={submitting}
+                        >
+                          <i className="bi bi-person-check me-1"></i>Select Customer
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${walkInMode ? 'btn-warning' : 'btn-outline-warning'}`}
+                          onClick={() => { setWalkInMode(true); setSelectedCustomer(null) }}
+                          disabled={submitting}
+                        >
+                          <i className="bi bi-person-x me-1"></i>Convert to Walk-in
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Walk-in mode info */}
+                  {walkInMode ? (
+                    <div className="alert alert-warning py-2 small mb-3">
+                      PREPAID to Walk-in conversion: the account will be unlinked and the ticket amount will be returned to the original PREPAID balance.
+                    </div>
+                  ) : (
+                    <>
                   {/* New customer selector */}
                   <label className="form-label small fw-bold">New Customer <span className="text-danger">*</span></label>
 
@@ -197,7 +254,7 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
                             <tbody>
                               {filtered.slice(0, 50).map(c => {
                                 const hasEnough = !isBusinessPayment || parseFloat(c.available_credit) >= saleTotal
-                                const isBlocked = isBusinessPayment && (c.is_suspended || !hasEnough)
+                                const isBlocked = isBusinessPayment && c.is_suspended
                                 return (
                                   <tr key={c.id_customer}
                                     className={isBusinessPayment ? (c.is_suspended ? 'table-warning' : (!hasEnough ? 'table-danger' : '')) : ''}
@@ -226,16 +283,18 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
 
                   {/* Validation messages */}
                   {isBusinessPayment && selectedCustomer && selectedCustomer.is_suspended && (
-                    <div className="alert alert-warning py-1 mt-2 small mb-0">
-                      <i className="bi bi-exclamation-triangle me-1"></i>
-                      The selected customer is suspended and cannot receive new charges.
+                    <div className="alert alert-danger py-1 mt-2 small mb-0">
+                      <i className="bi bi-x-circle me-1"></i>
+                      This customer is suspended and cannot receive corrected charges. Please select another customer or contact an administrator.
                     </div>
                   )}
                   {isBusinessPayment && selectedCustomer && parseFloat(selectedCustomer.available_credit) < saleTotal && !selectedCustomer.is_suspended && (
-                    <div className="alert alert-danger py-1 mt-2 small mb-0">
-                      <i className="bi bi-x-circle me-1"></i>
-                      Insufficient available credit. Selected customer has {formatCurrency(selectedCustomer.available_credit)} available, but this ticket requires {formatCurrency(saleTotal)}.
+                    <div className="alert alert-warning py-1 mt-2 small mb-0">
+                      <i className="bi bi-exclamation-triangle me-1"></i>
+                      Low credit notice: this correction will be applied even if the customer's available credit becomes negative.
                     </div>
+                  )}
+                    </>
                   )}
 
                   <hr />
@@ -263,10 +322,16 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary btn-sm" onClick={onClose} disabled={submitting}>Cancel</button>
-              <button className="btn btn-primary btn-sm" onClick={handleSubmit} disabled={!canSubmit}>
+              <button
+                className={`btn btn-sm ${walkInMode ? 'btn-warning' : 'btn-primary'}`}
+                onClick={handleSubmit}
+                disabled={!canSubmit}
+              >
                 {submitting
                   ? <><span className="spinner-border spinner-border-sm me-1"></span>Processing...</>
-                  : <><i className="bi bi-check-circle me-1"></i>{hasSourceCustomer ? 'Reassign Customer' : 'Assign Customer'}</>}
+                  : walkInMode
+                    ? <><i className="bi bi-person-x me-1"></i>Convert to Walk-in</>
+                    : <><i className="bi bi-check-circle me-1"></i>{hasSourceCustomer ? 'Reassign Customer' : 'Assign Customer'}</>}
               </button>
             </div>
           </div>

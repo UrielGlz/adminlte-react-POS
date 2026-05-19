@@ -192,17 +192,20 @@ export const getPaymentDetail = async (arPaymentId) => {
   `
 
   const allocationsSql = `
-    SELECT 
+    SELECT
       apa.allocation_id,
       apa.sale_uid,
       apa.payment_uid,
       apa.ticket_number,
       apa.amount_applied,
       apa.created_at,
+      apa.reversed_at,
+      apa.reversal_note,
+      CASE WHEN apa.reversed_at IS NOT NULL THEN 1 ELSE 0 END AS is_reversed,
       t.printed_at
       ,(SELECT full_name FROM sales s JOIN users u ON s.operator_id = u.user_id WHERE s.sale_uid = apa.sale_uid) AS operator_user
       ,CONCAT(sdf.driver_first_name,' ', sdf.driver_last_name) AS driver_name
-     
+
     FROM ar_payment_allocations apa
     JOIN tickets t ON apa.ticket_uid = t.ticket_uid
     JOIN sale_driver_info sdf ON apa.sale_uid = sdf.sale_uid
@@ -212,14 +215,14 @@ export const getPaymentDetail = async (arPaymentId) => {
   `
 
   const header = await query(headerSql, [arPaymentId])
-  const allocations = await query(allocationsSql, [arPaymentId])
+  const allAllocations = await query(allocationsSql, [arPaymentId])
 
-  //
   if (header.length === 0) return null
 
   return {
     ...header[0],
-    allocations
+    allocations:          allAllocations.filter(a => !a.is_reversed),
+    reversed_allocations: allAllocations.filter(a =>  a.is_reversed)
   }
 }
 

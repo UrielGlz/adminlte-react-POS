@@ -110,5 +110,31 @@ ALTER TABLE sale_customer_reassignments
 ALTER TABLE sale_customer_reassignments
   MODIFY from_customer_id INT(10) UNSIGNED NULL;
 
+-- Allow Walk-in target: to_customer_id can now be NULL when ticket is converted to Walk-in
+ALTER TABLE sale_customer_reassignments
+  MODIFY to_customer_id INT(10) UNSIGNED NULL;
+
 ALTER TABLE customer_credit_movements
   CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+
+-- ============================================================
+-- MIGRATION: ar_payment_allocations — reversal tracking
+--
+-- Adds three nullable columns so a PREPAID CREDIT_BALANCE allocation
+-- can be marked as reversed without deleting historical data.
+-- Safe to run multiple times: IF NOT EXISTS / ADD COLUMN checks.
+--
+-- reversed_at   — timestamp of the reversal (NULL = still active)
+-- reversed_by   — user_id who triggered the reversal
+-- reversal_note — short description for audit trail
+-- ============================================================
+ALTER TABLE ar_payment_allocations
+  ADD COLUMN IF NOT EXISTS reversed_at   TIMESTAMP    NULL DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS reversed_by   INT(10) UNSIGNED NULL DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS reversal_note VARCHAR(255) NULL DEFAULT NULL;
+
+-- Index for fast "active allocations only" queries
+ALTER TABLE ar_payment_allocations
+  ADD INDEX IF NOT EXISTS idx_apa_reversed_at (reversed_at);
+
+

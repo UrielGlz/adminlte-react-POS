@@ -20,7 +20,8 @@ const markAllocationsReversed = async (conn, allocs, userId, note) => {
 
   await conn.query(
     `UPDATE ar_payment_allocations
-     SET reversed_at = NOW(), reversed_by = ?, reversal_note = ?
+     SET reversed_at = NOW(), reversed_by = ?, reversal_note = ?,
+         active_ticket_uid = NULL
      WHERE allocation_id IN (${placeholders})`,
     [userId, note, ...ids]
   )
@@ -178,7 +179,7 @@ export const reassignCustomer = async (saleUid, payload, userId) => {
     }
 
     const [paymentRows] = await conn.query(
-      `SELECT p.payment_id, p.method_id, pm.code AS payment_method_code
+      `SELECT p.payment_id, p.payment_uid, p.method_id, pm.code AS payment_method_code
        FROM payments p
        INNER JOIN payment_methods pm ON p.method_id = pm.method_id
        WHERE p.sale_uid = ?
@@ -448,10 +449,11 @@ export const reassignCustomer = async (saleUid, payload, userId) => {
     if (reasons.length === 0) throw new BadRequestError('Invalid reassignment reason.')
 
     const [tickets] = await conn.query(
-      `SELECT ticket_uid FROM tickets WHERE sale_uid = ? LIMIT 1`,
+      `SELECT ticket_uid, ticket_number FROM tickets WHERE sale_uid = ? LIMIT 1`,
       [saleUid]
     )
-    const ticketUid = tickets.length > 0 ? tickets[0].ticket_uid : null
+    const ticketUid    = tickets.length > 0 ? tickets[0].ticket_uid    : null
+    const ticketNumber = tickets.length > 0 ? tickets[0].ticket_number : null
 
     let srcBalanceBefore = null
     let srcAvailBefore = null
@@ -621,7 +623,58 @@ export const reassignCustomer = async (saleUid, payload, userId) => {
       )
     }
 
-    // ── Adjust payment record based on credit type combination ────────────────
+    // ── Adjust payment record / AR allocations based on credit type combination ─
+
+    // PREPAID → PREPAID: payment stays as-is (Business Account, RECEIVED).
+    // Create a new active allocation on the target's CREDIT_BALANCE ar_payment
+    // so the payment detail shows the ticket as consumed from the correct pool.
+    // Idempotency: skip if an active allocation for this sale already exists.
+    if (
+      isBusinessPayment &&
+      srcCustomer &&
+      srcCustomer.credit_type === 'PREPAID' &&
+      tgtCustomer.credit_type === 'PREPAID'
+    ) {
+      const [tgtArPaymentRows] = await conn.query(
+        `SELECT ar_payment_id FROM ar_payments
+         WHERE customer_id = ? AND status = 'CREDIT_BALANCE'
+         ORDER BY payment_date ASC, created_at ASC
+         LIMIT 1 FOR UPDATE`,
+        [tgtCustomer.id_customer]
+      )
+      if (tgtArPaymentRows.length > 0) {
+        const tgtArPaymentId = tgtArPaymentRows[0].ar_payment_id
+        const [existingAlloc] = await conn.query(
+          `SELECT allocation_id FROM ar_payment_allocations
+           WHERE ar_payment_id = ? AND sale_uid = ? AND reversed_at IS NULL LIMIT 1`,
+          [tgtArPaymentId, saleUid]
+        )
+        if (existingAlloc.length === 0) {
+          await conn.query(
+            `INSERT INTO ar_payment_allocations
+              (ar_payment_id, sale_uid, payment_uid, ticket_uid, ticket_number, amount_applied,
+               active_ticket_uid)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [tgtArPaymentId, saleUid, payment.payment_uid, ticketUid, ticketNumber, movedAmount,
+             ticketUid]
+          )
+          // Full recalc from active allocations (negative amount_unapplied is allowed here).
+          await conn.query(
+            `UPDATE ar_payments ap
+             INNER JOIN (
+               SELECT COALESCE(SUM(amount_applied), 0) AS active_applied
+               FROM ar_payment_allocations
+               WHERE ar_payment_id = ? AND reversed_at IS NULL
+             ) agg ON 1 = 1
+             SET ap.amount_applied   = agg.active_applied,
+                 ap.amount_unapplied = ap.amount_received - agg.active_applied
+             WHERE ap.ar_payment_id = ?`,
+            [tgtArPaymentId, tgtArPaymentId]
+          )
+        }
+      }
+    }
+
     // PREPAID → POSTPAID: ticket now represents a POSTPAID receivable.
     // Revert payment to PENDING Business Account so it appears in AR pending list.
     if (
@@ -641,8 +694,6 @@ export const reassignCustomer = async (saleUid, payload, userId) => {
         [payPendingId, saleUid]
       )
     }
-    // PREPAID → PREPAID: payment stays as-is (Business Account, RECEIVED).
-    // No allocation is created for the target — credit movements capture the effect.
 
     await conn.commit()
 

@@ -229,9 +229,11 @@ export const applyPayment = async (data, userId) => {
     for (const alloc of finalAllocations) {
       await connection.query(
         `INSERT INTO ar_payment_allocations (
-          ar_payment_id, sale_uid, payment_uid, ticket_uid, ticket_number, amount_applied
-        ) VALUES (?, ?, ?, ?, ?, ?)`,
-        [arPaymentId, alloc.sale_uid, alloc.payment_uid, alloc.ticket_uid, alloc.ticket_number, alloc.amount_applied]
+          ar_payment_id, sale_uid, payment_uid, ticket_uid, ticket_number, amount_applied,
+          active_ticket_uid
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [arPaymentId, alloc.sale_uid, alloc.payment_uid, alloc.ticket_uid, alloc.ticket_number, alloc.amount_applied,
+         alloc.ticket_uid]
       )
       
       await connection.query(

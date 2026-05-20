@@ -137,4 +137,46 @@ ALTER TABLE ar_payment_allocations
 ALTER TABLE ar_payment_allocations
   ADD INDEX IF NOT EXISTS idx_apa_reversed_at (reversed_at);
 
+-- ============================================================
+-- MIGRATION: ar_payment_allocations — active-allocation uniqueness
+--
+-- Problem: the original table has a UNIQUE KEY on ticket_uid.
+-- PREPAID → PREPAID reassignment needs two rows for the same
+-- ticket_uid: one reversed (source) + one active (target).
+-- Rows are never deleted, so the old unique key blocks this.
+--
+-- Solution: plain nullable column managed by application code.
+--   active_ticket_uid = ticket_uid  when reversed_at IS NULL  (active)
+--   active_ticket_uid = NULL        when reversed_at IS NOT NULL (reversed)
+--
+-- MySQL/MariaDB treat each NULL as distinct in a UNIQUE index,
+-- so any number of reversed rows coexist while only one active
+-- allocation per ticket_uid is enforced.
+--
+-- Application responsibility (no triggers):
+--   INSERT active allocation  → set active_ticket_uid = ticket_uid
+--   UPDATE to mark reversed   → also set active_ticket_uid = NULL
+-- ============================================================
 
+-- 1. Add the plain nullable column (IF NOT EXISTS for idempotency).
+ALTER TABLE ar_payment_allocations
+  ADD COLUMN IF NOT EXISTS active_ticket_uid CHAR(36) NULL DEFAULT NULL;
+
+-- 2. Backfill: active rows get ticket_uid; reversed rows stay NULL.
+--    Safe to re-run: overwrites with the same correct value.
+UPDATE ar_payment_allocations
+SET active_ticket_uid = CASE
+    WHEN reversed_at IS NULL THEN ticket_uid
+    ELSE NULL
+END;
+
+-- 3. Remove the old per-ticket unique constraint.
+--    Key name 'ticket_uid' confirmed from runtime duplicate-key error.
+ALTER TABLE ar_payment_allocations
+  DROP INDEX IF EXISTS `ticket_uid`;
+
+-- 4. New unique constraint on the managed column.
+--    Reversed rows (NULL) are distinct — allowed to pile up.
+--    Active rows (ticket_uid value) must be unique.
+ALTER TABLE ar_payment_allocations
+  ADD UNIQUE INDEX IF NOT EXISTS uq_apa_active_ticket_uid (active_ticket_uid);

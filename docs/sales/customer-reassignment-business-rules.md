@@ -1,7 +1,7 @@
 # Customer Reassignment — Business Rules Reference
 
 **Module:** Daily Operations → Change Customer / Reassign Customer
-**Last updated:** 2026-05-19
+**Last updated:** 2026-05-22
 
 ---
 
@@ -288,7 +288,13 @@ ALTER TABLE ar_payment_allocations
 
 ### A) PREPAID → Walk-in — tickets 5219 and 5220
 
-Both tickets belonged to ACC-25 / Customer test UG (PREPAID). Converted to Walk-in.
+| Field | Value |
+|---|---|
+| Tickets | 5219 and 5220 |
+| Source | ACC-25 / Customer test UG (PREPAID) |
+| Target | Walk-in (no account) |
+
+Both tickets converted to Walk-in.
 
 **Expected and confirmed per ticket:**
 - `sales.customer_id = NULL`
@@ -538,3 +544,4 @@ ORDER BY r.changed_at ASC;
 |---|---|
 | `cab0869` | Walk-in support, credit block removal, PREPAID gating, audit trail |
 | `04bee52` | AR check split, allocation reversal, active_ticket_uid uniqueness, PREPAID→PREPAID target allocation, PREPAID→POSTPAID payment revert, AR Payment Detail UI (active vs reversed) |
+| `00630ef` | Stabilize all three PREPAID scenarios; docs fully rewritten with validated test data, schema migration, validation queries, pending scenarios, and known risks. Validated: PREPAID→Walk-in (tickets 5219/5220, ACC-25), PREPAID→PREPAID (ticket 5222, sale c3efbd52, ACC-25→ACC-28), PREPAID→POSTPAID (ticket 5223, sale 32b58d6f, ACC-28→ACC-26). |

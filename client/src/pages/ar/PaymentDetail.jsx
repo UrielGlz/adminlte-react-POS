@@ -4,10 +4,15 @@ import api from '../../services/api'
 import Swal from 'sweetalert2'
 import { formatDateTime, formatDateTimeCompact } from '../../utils/dateHelpers'
 
+const INITIAL_FORM = { newAmount: '', reason: '', notes: '' }
+
 function PaymentDetail() {
   const { id } = useParams()
   const [payment, setPayment] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [showModal, setShowModal] = useState(false)
+  const [form, setForm] = useState(INITIAL_FORM)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     fetchPaymentDetail()
@@ -15,9 +20,9 @@ function PaymentDetail() {
 
   const fetchPaymentDetail = async () => {
     try {
+      setLoading(true)
       const response = await api.get(`/ar/payments/${id}`)
       setPayment(response.data.data)
-      console.log(response.data.data);
     } catch (error) {
       console.error('Error fetching payment detail:', error)
       Swal.fire('Error', 'Could not load payment details', 'error')
@@ -26,10 +31,66 @@ function PaymentDetail() {
     }
   }
 
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0)
+  const openModal = () => {
+    setForm({ newAmount: payment.amount_received ?? '', reason: '', notes: '' })
+    setShowModal(true)
   }
 
+  const closeModal = () => {
+    setShowModal(false)
+    setForm(INITIAL_FORM)
+  }
+
+  const handleFormChange = (e) => {
+    const { name, value } = e.target
+    setForm(prev => ({ ...prev, [name]: value }))
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    const newAmount = parseFloat(form.newAmount)
+
+    if (!form.newAmount || isNaN(newAmount) || newAmount <= 0) {
+      Swal.fire('Validation', 'New amount must be greater than 0.', 'warning')
+      return
+    }
+    if (!form.reason.trim()) {
+      Swal.fire('Validation', 'Reason is required.', 'warning')
+      return
+    }
+
+    const appliedAmount = parseFloat(payment.real_applied_amount ?? 0)
+    const oldAmount = parseFloat(payment.amount_received)
+
+    if (appliedAmount > 0 && newAmount < appliedAmount) {
+      Swal.fire(
+        'Not allowed',
+        `New amount cannot be less than the already applied amount (${formatCurrency(appliedAmount)}).`,
+        'warning'
+      )
+      return
+    }
+
+    setSaving(true)
+    try {
+      await api.patch(`/ar/payments/${id}/amount`, {
+        new_amount_received: newAmount,
+        reason: form.reason.trim(),
+        notes: form.notes.trim() || undefined
+      })
+      closeModal()
+      await fetchPaymentDetail()
+      Swal.fire({ icon: 'success', title: 'Updated', text: 'Payment amount updated successfully.', timer: 2000, showConfirmButton: false })
+    } catch (error) {
+      const msg = error.response?.data?.message || 'Could not update payment amount.'
+      Swal.fire('Error', msg, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const formatCurrency = (value) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0)
 
   if (loading) {
     return (
@@ -48,6 +109,9 @@ function PaymentDetail() {
     )
   }
 
+  const appliedAmount = parseFloat(payment.real_applied_amount ?? 0)
+  const hasPartialApplication = appliedAmount > 0
+
   return (
     <div className="container-fluid">
       {/* Header */}
@@ -61,10 +125,18 @@ function PaymentDetail() {
               </h1>
               <p className="text-muted mb-0">A/R Payment Record</p>
             </div>
-            <Link to="/ar/all-payments" className="btn btn-outline-primary">
-              <i className="bi bi-arrow-left me-1"></i>
-              Back to History
-            </Link>
+            <div className="d-flex gap-2">
+              {payment.is_editable && (
+                <button className="btn btn-outline-warning" onClick={openModal}>
+                  <i className="bi bi-pencil me-1"></i>
+                  Edit Payment Amount
+                </button>
+              )}
+              <Link to="/ar/all-payments" className="btn btn-outline-primary">
+                <i className="bi bi-arrow-left me-1"></i>
+                Back to History
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -83,6 +155,14 @@ function PaymentDetail() {
                   <tr>
                     <td className="text-muted" style={{ width: '40%' }}>Customer:</td>
                     <td><strong>{payment.account_name}</strong> ({payment.account_number})</td>
+                  </tr>
+                  <tr>
+                    <td className="text-muted">Account Type:</td>
+                    <td>
+                      <span className={`badge ${payment.credit_type === 'PREPAID' ? 'bg-info' : 'bg-secondary'}`}>
+                        {payment.credit_type}
+                      </span>
+                    </td>
                   </tr>
                   <tr>
                     <td className="text-muted">Payment Date:</td>
@@ -132,9 +212,9 @@ function PaymentDetail() {
           </div>
         </div>
 
-        {/* Amount Summary */}
+        {/* Amount Summary + Adjustment History */}
         <div className="col-md-6">
-          <div className="card mb-4">
+          <div className="card mb-3">
             <div className="card-header">
               <i className="bi bi-currency-dollar me-2"></i>
               Amount Summary
@@ -156,6 +236,49 @@ function PaymentDetail() {
                   </h3>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Adjustment History — compact list in right column */}
+          <div className="card mb-4">
+            <div className="card-header d-flex justify-content-between align-items-center">
+              <span>
+                <i className="bi bi-clock-history me-2"></i>
+                Adjustment History
+              </span>
+              {payment.adjustments?.length > 0 && (
+                <span className="badge bg-secondary">{payment.adjustments.length}</span>
+              )}
+            </div>
+            <div className="card-body p-0">
+              {(!payment.adjustments || payment.adjustments.length === 0) ? (
+                <p className="text-center text-muted small py-3 mb-0">No payment adjustments recorded.</p>
+              ) : (
+                <ul className="list-group list-group-flush">
+                  {payment.adjustments.map((adj) => {
+                    const delta = parseFloat(adj.delta_amount)
+                    const isPositive = delta > 0
+                    return (
+                      <li key={adj.adjustment_id} className="list-group-item px-3 py-2">
+                        <div className="d-flex justify-content-between align-items-center mb-1">
+                          <small className="text-muted">{formatDateTimeCompact(adj.adjusted_at)}</small>
+                          <small className="text-muted">{adj.adjusted_by_name || '-'}</small>
+                        </div>
+                        <div className="d-flex align-items-center gap-2 mb-1">
+                          <span className="text-muted small">{formatCurrency(adj.old_amount_received)}</span>
+                          <i className="bi bi-arrow-right small text-muted"></i>
+                          <span className="fw-semibold">{formatCurrency(adj.new_amount_received)}</span>
+                          <span className={`badge ms-auto ${isPositive ? 'bg-success' : 'bg-danger'}`}>
+                            {isPositive ? '+' : ''}{formatCurrency(delta)}
+                          </span>
+                        </div>
+                        <div className="small text-muted">{adj.reason}</div>
+                        {adj.notes && <div className="small fst-italic text-muted">{adj.notes}</div>}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
             </div>
           </div>
         </div>
@@ -211,7 +334,7 @@ function PaymentDetail() {
         </div>
       </div>
 
-      {/* Reversed Allocations — shown only when present */}
+      {/* Reversed Allocations */}
       {payment.reversed_allocations?.length > 0 && (
         <div className="card mb-4">
           <div className="card-header text-muted">
@@ -253,6 +376,126 @@ function PaymentDetail() {
             </table>
           </div>
         </div>
+      )}
+
+      {/* Edit Payment Amount Modal */}
+      {showModal && (
+        <>
+          <div className="modal fade show d-block" tabIndex="-1" role="dialog">
+            <div className="modal-dialog modal-dialog-centered" role="document">
+              <div className="modal-content">
+                <form onSubmit={handleSubmit}>
+                  <div className="modal-header">
+                    <h5 className="modal-title">
+                      <i className="bi bi-pencil me-2"></i>
+                      Edit Payment Amount
+                    </h5>
+                    <button type="button" className="btn-close" onClick={closeModal} disabled={saving} />
+                  </div>
+                  <div className="modal-body">
+                    {hasPartialApplication && (
+                      <div className="alert alert-warning d-flex align-items-start gap-2 mb-3">
+                        <i className="bi bi-exclamation-triangle-fill mt-1"></i>
+                        <div>
+                          <strong>Partially applied payment.</strong>
+                          <br />
+                          This prepaid payment has already been partially applied. You can decrease it only down to the applied amount ({formatCurrency(appliedAmount)}).
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Read-only summary */}
+                    <div className="row g-2 mb-3">
+                      <div className="col-4 text-center">
+                        <small className="text-muted d-block">Current Amount</small>
+                        <strong>{formatCurrency(payment.amount_received)}</strong>
+                      </div>
+                      <div className="col-4 text-center">
+                        <small className="text-muted d-block">Applied</small>
+                        <strong className="text-success">{formatCurrency(appliedAmount)}</strong>
+                      </div>
+                      <div className="col-4 text-center">
+                        <small className="text-muted d-block">Unapplied</small>
+                        <strong className="text-warning">{formatCurrency(payment.amount_unapplied)}</strong>
+                      </div>
+                    </div>
+
+                    <hr />
+
+                    <div className="mb-3">
+                      <label className="form-label fw-semibold">
+                        New Amount Received <span className="text-danger">*</span>
+                      </label>
+                      <div className="input-group">
+                        <span className="input-group-text">$</span>
+                        <input
+                          type="number"
+                          className="form-control"
+                          name="newAmount"
+                          value={form.newAmount}
+                          onChange={handleFormChange}
+                          min={hasPartialApplication ? appliedAmount : '0.01'}
+                          step="0.01"
+                          required
+                          disabled={saving}
+                          autoFocus
+                        />
+                      </div>
+                      {hasPartialApplication && (
+                        <div className="form-text text-muted">
+                          Minimum: {formatCurrency(appliedAmount)} (already applied amount)
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mb-3">
+                      <label className="form-label fw-semibold">
+                        Reason <span className="text-danger">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        name="reason"
+                        value={form.reason}
+                        onChange={handleFormChange}
+                        placeholder="e.g. Corrected wrong received amount"
+                        maxLength={255}
+                        required
+                        disabled={saving}
+                      />
+                    </div>
+
+                    <div className="mb-1">
+                      <label className="form-label fw-semibold">Notes <span className="text-muted fw-normal">(optional)</span></label>
+                      <textarea
+                        className="form-control"
+                        name="notes"
+                        value={form.notes}
+                        onChange={handleFormChange}
+                        rows={2}
+                        maxLength={500}
+                        placeholder="Additional context..."
+                        disabled={saving}
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button type="button" className="btn btn-secondary" onClick={closeModal} disabled={saving}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-warning" disabled={saving}>
+                      {saving
+                        ? <><span className="spinner-border spinner-border-sm me-1" />Saving...</>
+                        : <><i className="bi bi-check-lg me-1" />Save Changes</>
+                      }
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+          <div className="modal-backdrop fade show" onClick={!saving ? closeModal : undefined} />
+        </>
       )}
     </div>
   )

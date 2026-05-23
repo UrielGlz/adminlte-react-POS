@@ -17,6 +17,7 @@ router.get('/payments/all-history', requirePermission('ar.read'), ArController.g
 router.get('/payment-methods', requirePermission('ar.read'), ArController.getPaymentMethods)
 // Payments
 router.post('/payments', requirePermission('ar.write'), ArController.applyPayment)
+router.patch('/payments/:id/amount', requirePermission('ar.write'), ArController.adjustPaymentAmount)
 router.get('/payments/:id', requirePermission('ar.read'), ArController.getPaymentDetail)
 
 

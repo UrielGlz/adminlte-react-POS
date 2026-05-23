@@ -68,6 +68,16 @@ export const getPaymentDetail = async (req, res, next) => {
  * GET /api/ar/payments/all-history
  * Get all payment history with filters and pagination
  */
+export const adjustPaymentAmount = async (req, res, next) => {
+  try {
+    const userId = req.user?.userId || null
+    const result = await ArService.adjustPaymentAmount(req.params.id, req.body, userId)
+    success(res, result, result.message)
+  } catch (error) {
+    next(error)
+  }
+}
+
 export const getAllPaymentHistory = async (req, res, next) => {
   try {
     const filters = {
@@ -93,5 +103,6 @@ export default {
   getPaymentMethods,
   applyPayment,
   getPaymentDetail,
+  adjustPaymentAmount,
   getAllPaymentHistory
 }

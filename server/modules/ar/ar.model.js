@@ -178,17 +178,49 @@ export const getPaymentHistory = async (customerId, limit = 50) => {
  */
 export const getPaymentDetail = async (arPaymentId) => {
   const headerSql = `
-    SELECT 
+    SELECT
       ap.*,
       pm.name AS payment_method,
       c.account_number,
       c.account_name,
-      u.full_name AS created_by
+      u.full_name AS created_by,
+      cc.credit_type
     FROM ar_payments ap
     INNER JOIN payment_methods pm ON ap.method_id = pm.method_id
     INNER JOIN customers c ON ap.customer_id = c.id_customer
+    INNER JOIN customer_credit cc ON c.id_customer = cc.customer_id
     LEFT JOIN users u ON ap.created_by_user = u.user_id
     WHERE ap.ar_payment_id = ?
+  `
+
+  const realAppliedSql = `
+    SELECT COALESCE(SUM(amount_applied), 0) AS real_applied_amount
+    FROM ar_payment_allocations
+    WHERE ar_payment_id = ? AND reversed_at IS NULL
+  `
+
+  const adjustmentsSql = `
+    SELECT
+      adj.adjustment_id,
+      adj.adjustment_uid,
+      adj.old_amount_received,
+      adj.new_amount_received,
+      adj.delta_amount,
+      adj.applied_amount,
+      adj.old_amount_unapplied,
+      adj.new_amount_unapplied,
+      adj.old_available_credit,
+      adj.new_available_credit,
+      adj.payment_status,
+      adj.reason,
+      adj.notes,
+      adj.adjusted_by_user,
+      u.full_name AS adjusted_by_name,
+      adj.adjusted_at
+    FROM ar_payment_adjustments adj
+    LEFT JOIN users u ON adj.adjusted_by_user = u.user_id
+    WHERE adj.ar_payment_id = ?
+    ORDER BY adj.adjusted_at DESC
   `
 
   const allocationsSql = `
@@ -214,13 +246,23 @@ export const getPaymentDetail = async (arPaymentId) => {
     ORDER BY apa.created_at
   `
 
-  const header = await query(headerSql, [arPaymentId])
-  const allAllocations = await query(allocationsSql, [arPaymentId])
+  const [header, allAllocations, realApplied, adjustments] = await Promise.all([
+    query(headerSql, [arPaymentId]),
+    query(allocationsSql, [arPaymentId]),
+    query(realAppliedSql, [arPaymentId]),
+    query(adjustmentsSql, [arPaymentId])
+  ])
 
   if (header.length === 0) return null
 
+  const h = header[0]
+  const realAppliedAmount = parseFloat(realApplied[0].real_applied_amount)
+
   return {
-    ...header[0],
+    ...h,
+    real_applied_amount: realAppliedAmount,
+    is_editable: h.credit_type === 'PREPAID' && h.status !== 'VOIDED' && h.voided_at == null,
+    adjustments,
     allocations:          allAllocations.filter(a => !a.is_reversed),
     reversed_allocations: allAllocations.filter(a =>  a.is_reversed)
   }

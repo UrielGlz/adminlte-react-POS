@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import * as ArModel from './ar.model.js'
 import { query, getConnection } from '../../config/database.js'
 import { BadRequestError, NotFoundError, ForbiddenError } from '../../utils/errors.js'
@@ -368,6 +369,164 @@ const applyCreditBalancePayment = async (data) => {
 }
 
 /**
+ * Adjust amount_received on a PREPAID A/R payment.
+ * Rules:
+ *   - Only PREPAID customers.
+ *   - VOIDED / voided_at not null → blocked.
+ *   - new_amount_received must be > 0.
+ *   - applied_amount = real SUM of active ar_payment_allocations.
+ *   - new_amount_received must be >= applied_amount (cannot go below applied).
+ *   - customer_credit.available_credit + delta must be >= 0.
+ *   - amount_unapplied is a generated column → NOT included in UPDATE.
+ *   - customer_credit.available_credit adjusted by delta.
+ *   - Audit inserted into ar_payment_adjustments.
+ */
+export const adjustPaymentAmount = async (arPaymentId, body, userId) => {
+  const { new_amount_received, reason, notes } = body
+
+  const newAmountReceived = parseFloat(new_amount_received)
+  if (!new_amount_received || isNaN(newAmountReceived) || newAmountReceived <= 0) {
+    throw new BadRequestError('New amount received must be greater than 0.')
+  }
+  if (!reason || reason.trim().length === 0) {
+    throw new BadRequestError('Reason is required.')
+  }
+
+  const connection = await getConnection()
+
+  try {
+    await connection.beginTransaction()
+
+    // 1. Lock ar_payments row for this payment
+    const [paymentRows] = await connection.query(
+      `SELECT ar_payment_id, ar_payment_uid, customer_id,
+              amount_received, amount_applied, amount_unapplied,
+              status, voided_at
+       FROM ar_payments
+       WHERE ar_payment_id = ?
+       FOR UPDATE`,
+      [arPaymentId]
+    )
+    if (paymentRows.length === 0) throw new NotFoundError('A/R Payment not found.')
+    const payment = paymentRows[0]
+
+    // 2. Lock customer_credit row
+    const [creditRows] = await connection.query(
+      `SELECT customer_id, credit_type, available_credit
+       FROM customer_credit
+       WHERE customer_id = ?
+       FOR UPDATE`,
+      [payment.customer_id]
+    )
+    if (creditRows.length === 0) throw new NotFoundError('Customer credit record not found.')
+    const credit = creditRows[0]
+
+    // 3. PREPAID only
+    if (credit.credit_type !== 'PREPAID') {
+      throw new BadRequestError('Postpaid payments cannot be edited from this screen.')
+    }
+
+    // 4. Status guard
+    if (payment.status === 'VOIDED' || payment.voided_at !== null) {
+      throw new BadRequestError('Voided payments cannot be edited.')
+    }
+
+    // 5. Real applied amount from active allocations (authoritative, avoids drift)
+    const [allocRows] = await connection.query(
+      `SELECT COALESCE(SUM(amount_applied), 0) AS real_applied
+       FROM ar_payment_allocations
+       WHERE ar_payment_id = ? AND reversed_at IS NULL`,
+      [arPaymentId]
+    )
+    const appliedAmount = parseFloat(allocRows[0].real_applied)
+
+    const oldAmountReceived = parseFloat(payment.amount_received)
+    const roundedNew = Math.round(newAmountReceived * 100) / 100
+    const roundedOld = Math.round(oldAmountReceived * 100) / 100
+
+    if (roundedNew === roundedOld) {
+      throw new BadRequestError('New amount is the same as the current amount. No changes made.')
+    }
+
+    // 6. Cannot go below already applied amount
+    if (roundedNew < appliedAmount) {
+      throw new BadRequestError(
+        `New amount ($${roundedNew.toFixed(2)}) cannot be less than the already applied amount ($${appliedAmount.toFixed(2)}).`
+      )
+    }
+
+    const delta = roundedNew - roundedOld
+    const oldAmountUnapplied = parseFloat(payment.amount_unapplied ?? (oldAmountReceived - appliedAmount))
+    const newAmountUnapplied = roundedNew - appliedAmount
+    const oldAvailableCredit = parseFloat(credit.available_credit)
+    const newAvailableCredit = oldAvailableCredit + delta
+
+    // 7. Cannot leave available_credit below zero
+    if (newAvailableCredit < 0) {
+      const minFromCredit = Math.round((roundedOld - oldAvailableCredit) * 100) / 100
+      const minimumAllowed = Math.max(minFromCredit, appliedAmount)
+      throw new BadRequestError(
+        `This adjustment would reduce the customer's available credit to $${newAvailableCredit.toFixed(2)}. ` +
+        `The minimum receivable amount for this payment is $${minimumAllowed.toFixed(2)}.`
+      )
+    }
+
+    // 8. Update amount_received only — amount_unapplied is a generated column, recalculates automatically
+    await connection.query(
+      `UPDATE ar_payments SET amount_received = ? WHERE ar_payment_id = ?`,
+      [roundedNew, arPaymentId]
+    )
+
+    // 9. Adjust available_credit by delta
+    await connection.query(
+      `UPDATE customer_credit SET available_credit = ? WHERE customer_id = ?`,
+      [newAvailableCredit, payment.customer_id]
+    )
+
+    // 10. Audit record
+    await connection.query(
+      `INSERT INTO ar_payment_adjustments (
+        adjustment_uid, ar_payment_id, ar_payment_uid, customer_id,
+        old_amount_received, new_amount_received, delta_amount,
+        applied_amount, old_amount_unapplied, new_amount_unapplied,
+        old_available_credit, new_available_credit,
+        payment_status, reason, notes,
+        adjusted_by_user
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        randomUUID(),
+        arPaymentId, payment.ar_payment_uid, payment.customer_id,
+        oldAmountReceived, roundedNew, delta,
+        appliedAmount, oldAmountUnapplied, newAmountUnapplied,
+        oldAvailableCredit, newAvailableCredit,
+        payment.status, reason.trim(), notes?.trim() || null,
+        userId
+      ]
+    )
+
+    await connection.commit()
+
+    return {
+      ar_payment_id: parseInt(arPaymentId),
+      old_amount_received: oldAmountReceived,
+      new_amount_received: roundedNew,
+      delta_amount: delta,
+      applied_amount: appliedAmount,
+      new_amount_unapplied: newAmountUnapplied,
+      old_available_credit: oldAvailableCredit,
+      new_available_credit: newAvailableCredit,
+      message: 'Payment amount updated successfully.'
+    }
+
+  } catch (error) {
+    await connection.rollback()
+    throw error
+  } finally {
+    connection.release()
+  }
+}
+
+/**
  * Get payment history
  */
 export const getPaymentHistory = async (customerId) => {
@@ -394,7 +553,6 @@ export const getPaymentDetail = async (arPaymentId) => {
  */
 export const getAllPaymentHistory = async (filters) => {
   const detail = await ArModel.getAllPaymentHistory(filters)
-  console.log(detail);
   if (!detail) {
     throw new NotFoundError('A/R Payment History not found')
   }
@@ -409,5 +567,6 @@ export default {
   applyPayment,
   getPaymentHistory,
   getPaymentDetail,
+  adjustPaymentAmount,
   getAllPaymentHistory
 }

@@ -59,11 +59,13 @@ export const getAll = async (filters = {}) => {
 export const getById = async (id) => {
   const sales = await query(`
     SELECT s.*, st.code as status_code, st.label as status_label, u.full_name as operator_name,
-           vr.code as void_reason_code, vr.label as void_reason_label
+           vr.code as void_reason_code, vr.label as void_reason_label,
+           COALESCE(vu.full_name, vu.username, CAST(s.voided_by_user AS CHAR)) AS voided_by_name
     FROM sales s
     LEFT JOIN status_catalogo st ON s.sale_status_id = st.status_id
     LEFT JOIN users u ON s.operator_id = u.user_id
     LEFT JOIN void_reasons vr ON s.void_reason_id = vr.void_reason_id
+    LEFT JOIN users vu ON vu.user_id = s.voided_by_user
     WHERE s.sale_id = ?
   `, [id])
 

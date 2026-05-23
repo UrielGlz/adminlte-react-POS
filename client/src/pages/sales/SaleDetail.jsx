@@ -327,7 +327,7 @@ function SaleDetail() {
               </div>
               <div className="card-body small">
                 <p className="mb-1"><b>Voided At:</b> {formatDate(sale.voided_at)}</p>
-                <p className="mb-1"><b>Voided By:</b> {sale.voided_by_user || '-'}</p>
+                <p className="mb-1"><b>Voided By:</b> {sale.voided_by_name || sale.voided_by_user || '-'}</p>
                 <p className={sale.void_reason_note ? 'mb-1' : 'mb-0'}>
                   <b>Void Reason:</b> {sale.void_reason_label || '-'}
                 </p>

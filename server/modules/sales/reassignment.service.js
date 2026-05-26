@@ -263,15 +263,14 @@ export const reassignCustomer = async (saleUid, payload, userId) => {
     // ── WALK-IN PATH ────────────────────────────────────────────────────────
     if (isWalkIn) {
       if (!isBusinessPayment) {
-        throw new BadRequestError('Walk-in conversion is only allowed for PREPAID Business Account tickets.')
+        throw new BadRequestError('Walk-in conversion is only allowed for Business Account tickets.')
       }
       if (!srcCustomer) {
         throw new BadRequestError('Walk-in conversion is not available because the original customer account could not be found.')
       }
-      if (srcCustomer.credit_type !== 'PREPAID') {
+      if (srcCustomer.credit_type !== 'PREPAID' && srcCustomer.credit_type !== 'POSTPAID') {
         throw new BadRequestError(
-          'Walk-in conversion is only allowed for PREPAID Business Account tickets. ' +
-          'POSTPAID tickets must be reassigned to another customer.'
+          'Walk-in conversion is only supported for PREPAID and POSTPAID Business Account tickets.'
         )
       }
 
@@ -288,15 +287,30 @@ export const reassignCustomer = async (saleUid, payload, userId) => {
       )
       const ticketUid = walkInTickets.length > 0 ? walkInTickets[0].ticket_uid : null
 
-      const movedAmount    = parseFloat(sale.total)
-      const srcAvailBefore = parseFloat(srcCustomer.available_credit)
-      const srcAvailAfter  = srcAvailBefore + movedAmount
+      const movedAmount      = parseFloat(sale.total)
+      const srcBalanceBefore = parseFloat(srcCustomer.current_balance)
+      const srcAvailBefore   = parseFloat(srcCustomer.available_credit)
+      const srcAvailAfter    = srcAvailBefore + movedAmount
+      const srcBalanceAfter  = srcCustomer.credit_type === 'POSTPAID'
+        ? srcBalanceBefore - movedAmount
+        : srcBalanceBefore
 
-      // Return PREPAID available credit to source customer
-      await conn.query(
-        `UPDATE customer_credit SET available_credit = available_credit + ? WHERE customer_id = ?`,
-        [movedAmount, srcCustomer.id_customer]
-      )
+      if (srcCustomer.credit_type === 'POSTPAID') {
+        // POSTPAID: reverse both the outstanding balance and return available credit
+        await conn.query(
+          `UPDATE customer_credit
+           SET current_balance  = current_balance - ?,
+               available_credit = available_credit + ?
+           WHERE customer_id = ?`,
+          [movedAmount, movedAmount, srcCustomer.id_customer]
+        )
+      } else {
+        // PREPAID: only return available credit (current_balance is not used for PREPAID)
+        await conn.query(
+          `UPDATE customer_credit SET available_credit = available_credit + ? WHERE customer_id = ?`,
+          [movedAmount, srcCustomer.id_customer]
+        )
+      }
 
       // Detach customer from sale
       await conn.query(
@@ -341,7 +355,7 @@ export const reassignCustomer = async (saleUid, payload, userId) => {
           fromSnapshotWI.account_address, fromSnapshotWI.account_country, fromSnapshotWI.account_state,
           null, 'WALK-IN CUSTOMER', null, null, null,
           sale.total, movedAmount,
-          'PREPAID', null,
+          srcCustomer.credit_type, null,
           reassignmentReasonId, reasonNotes || null, userId
         ]
       )
@@ -357,9 +371,9 @@ export const reassignCustomer = async (saleUid, payload, userId) => {
           srcCustomer.id_customer, saleUid, wiReassignmentId,
           'SALE_REASSIGN_REVERSAL', 'REASSIGNMENT', String(wiReassignmentId),
           movedAmount,
-          null, null,
+          srcBalanceBefore, srcBalanceAfter,
           srcAvailBefore, srcAvailAfter,
-          `PREPAID credit reversed - ticket converted to Walk-in Customer`,
+          `${srcCustomer.credit_type} credit reversed - ticket converted to Walk-in Customer`,
           userId
         ]
       )
@@ -693,6 +707,65 @@ export const reassignCustomer = async (saleUid, payload, userId) => {
          WHERE sale_uid = ?`,
         [payPendingId, saleUid]
       )
+    }
+
+    // POSTPAID → PREPAID: credit is consumed immediately from the PREPAID pool.
+    // The original PENDING payment must be marked RECEIVED, and a CREDIT_BALANCE
+    // allocation must link the ticket to the target customer's AR credit balance.
+    if (
+      isBusinessPayment &&
+      srcCustomer &&
+      srcCustomer.credit_type === 'POSTPAID' &&
+      tgtCustomer.credit_type === 'PREPAID'
+    ) {
+      const payReceivedId = await getStatusId(conn, 'PAYMENTS', 'RECEIVED')
+      await conn.query(
+        `UPDATE payments
+         SET payment_status_id = ?,
+             amount_applied    = amount,
+             received_at       = COALESCE(received_at, NOW()),
+             updated_at        = NOW()
+         WHERE sale_uid = ?`,
+        [payReceivedId, saleUid]
+      )
+
+      const [tgtArPaymentRows] = await conn.query(
+        `SELECT ar_payment_id FROM ar_payments
+         WHERE customer_id = ? AND status = 'CREDIT_BALANCE'
+         ORDER BY payment_date ASC, created_at ASC
+         LIMIT 1 FOR UPDATE`,
+        [tgtCustomer.id_customer]
+      )
+      if (tgtArPaymentRows.length > 0) {
+        const tgtArPaymentId = tgtArPaymentRows[0].ar_payment_id
+        const [existingAlloc] = await conn.query(
+          `SELECT allocation_id FROM ar_payment_allocations
+           WHERE ar_payment_id = ? AND sale_uid = ? AND reversed_at IS NULL LIMIT 1`,
+          [tgtArPaymentId, saleUid]
+        )
+        if (existingAlloc.length === 0) {
+          await conn.query(
+            `INSERT INTO ar_payment_allocations
+              (ar_payment_id, sale_uid, payment_uid, ticket_uid, ticket_number, amount_applied,
+               active_ticket_uid)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [tgtArPaymentId, saleUid, payment.payment_uid, ticketUid, ticketNumber, movedAmount,
+             ticketUid]
+          )
+          await conn.query(
+            `UPDATE ar_payments ap
+             INNER JOIN (
+               SELECT COALESCE(SUM(amount_applied), 0) AS active_applied
+               FROM ar_payment_allocations
+               WHERE ar_payment_id = ? AND reversed_at IS NULL
+             ) agg ON 1 = 1
+             SET ap.amount_applied   = agg.active_applied,
+                 ap.amount_unapplied = ap.amount_received - agg.active_applied
+             WHERE ap.ar_payment_id = ?`,
+            [tgtArPaymentId, tgtArPaymentId]
+          )
+        }
+      }
     }
 
     await conn.commit()

@@ -48,6 +48,7 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
   const saleTotal = parseFloat(sale?.total) || 0
   const sourceCustomerFromList = customers.find(c => c.account_number === currentAccountNumber)
   const sourceIsPrepaid = sourceCustomerFromList?.credit_type === 'PREPAID'
+  const sourceSupportsWalkIn = sourceIsPrepaid || sourceCustomerFromList?.credit_type === 'POSTPAID'
 
   const filtered = customers.filter(c => {
     if (c.account_number === currentAccountNumber) return false
@@ -87,7 +88,7 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
             <p class="mb-1">From: <b>${currentCustomerLabel}</b></p>
             <p class="mb-2">To: <b>Walk-in Customer</b></p>
             <div class="alert alert-warning py-1 mb-0 small text-start">
-              The PREPAID balance of <b>${formatCurrency(saleTotal)}</b> will be returned to the source account.
+              This will convert the Business Account ticket to Walk-in/Cash and unlink it from the customer account.
               This action cannot be undone without another reassignment.
             </div>
           `,
@@ -180,8 +181,8 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
                     </div>
                   )}
 
-                  {/* Walk-in toggle — only for PREPAID Business Account sales */}
-                  {isBusinessPayment && sourceIsPrepaid && (
+                  {/* Walk-in toggle — for PREPAID and POSTPAID Business Account sales */}
+                  {isBusinessPayment && sourceSupportsWalkIn && (
                     <div className="mb-3">
                       <div className="btn-group w-100" role="group">
                         <button
@@ -207,7 +208,7 @@ function ReassignCustomerModal({ sale, onClose, onSuccess }) {
                   {/* Walk-in mode info */}
                   {walkInMode ? (
                     <div className="alert alert-warning py-2 small mb-3">
-                      PREPAID to Walk-in conversion: the account will be unlinked and the ticket amount will be returned to the original PREPAID balance.
+                      This will convert the Business Account ticket to Walk-in/Cash and unlink it from the customer account.
                     </div>
                   ) : (
                     <>

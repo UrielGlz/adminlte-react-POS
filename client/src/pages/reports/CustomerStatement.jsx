@@ -28,7 +28,8 @@ function CustomerStatement() {
     customer_id: '',
     date_from: lastMonth,
     date_to: today,
-    include_tickets: '0' // default NO
+    include_tickets: '0',
+    status: 'all'
   })
 
   useEffect(() => {
@@ -132,7 +133,7 @@ function CustomerStatement() {
 
 
   const getStatusBadge = (paymentStatus, saleStatus) => {
-    if (saleStatus === 'CANCELLED') return <span className="badge bg-danger">Cancelled</span>
+    if (saleStatus === 'VOID') return <span className="badge bg-danger">Void</span>
     if (paymentStatus === 'RECEIVED') return <span className="badge bg-success">Paid</span>
     if (paymentStatus === 'PENDING') return <span className="badge bg-warning text-dark">Pending</span>
     return <span className="badge bg-secondary">-</span>
@@ -184,9 +185,9 @@ function CustomerStatement() {
       textClass: 'text-dark'
     },
     {
-      key: 'cancelled',
-      label: 'Cancelled',
-      value: totals.count_cancelled || 0,
+      key: 'void',
+      label: 'Void',
+      value: totals.count_void || 0,
       color: '#dc3545',
       softBg: 'rgba(220, 53, 69, 0.12)',
       icon: 'bi-x-circle'
@@ -274,7 +275,7 @@ function CustomerStatement() {
         </div>
         <div className="card-body py-3">
           <div className="row g-3 align-items-end">
-            <div className="col-md-4">
+            <div className="col-md-3">
               <label className="form-label small">Customer <span className="text-danger">*</span></label>
               <select
                 className="form-select"
@@ -311,6 +312,21 @@ function CustomerStatement() {
               />
             </div>
             <div className="col-md-2">
+              <label className="form-label small">Status</label>
+              <select
+                className="form-select"
+                name="status"
+                value={filters.status}
+                onChange={handleFilterChange}
+              >
+                <option value="all">All</option>
+                <option value="completed">Completed</option>
+                <option value="pending">Pending</option>
+                <option value="void">Void</option>
+              </select>
+            </div>
+
+            <div className="col-md-2">
               <label className="form-label small">Include Tickets (PDF)</label>
               <select
                 className="form-select"
@@ -323,9 +339,9 @@ function CustomerStatement() {
               </select>
             </div>
 
-            <div className="col-md-2">
-              <button className="btn btn-primary w-100" onClick={applyFilters}>
-                <i className="bi bi-search me-2"></i>Generate
+            <div className="col-md-1">
+              <button className="btn btn-primary w-100" onClick={applyFilters} title="Generate">
+                <i className="bi bi-search"></i>
               </button>
             </div>
           </div>

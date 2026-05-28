@@ -216,7 +216,7 @@ export const getCustomerTransactions = async (customerId, dateFrom, dateTo) => {
  * Obtener datos completos del reporte
  */
 export const getData = async (filters = {}) => {
-  const { customer_id, date_from = null, date_to = null } = filters
+  const { customer_id, date_from = null, date_to = null, status = 'all' } = filters
 
   if (!customer_id || customer_id === 'all') {
     return { customer: null, transactions: [], totals: {}, payment_summary: {} }
@@ -227,36 +227,65 @@ export const getData = async (filters = {}) => {
     return { customer: null, transactions: [], totals: {}, payment_summary: {} }
   }
 
-  const transactions = await getCustomerTransactions(customer_id, date_from, date_to)
+  const allTransactions = await getCustomerTransactions(customer_id, date_from, date_to)
   const toNum = v => Number.parseFloat(v) || 0
   const norm = v => (v ?? '').toString().trim().toUpperCase()
 
+  const isVoid = (t) => norm(t.sale_status_code) === 'VOID'
+  const nonVoid = allTransactions.filter(t => !isVoid(t))
+
+  const statusNorm = (status ?? '').toLowerCase()
+
+  // displayTransactions: rows shown in the detail table / exports
+  let displayTransactions = allTransactions
+  if (statusNorm === 'completed') {
+    displayTransactions = allTransactions.filter(t => norm(t.sale_status_code) === 'COMPLETED')
+  } else if (statusNorm === 'pending') {
+    displayTransactions = allTransactions.filter(t =>
+      norm(t.payment_status_code) === 'PENDING' && !isVoid(t)
+    )
+  } else if (statusNorm === 'void') {
+    displayTransactions = allTransactions.filter(t => isVoid(t))
+  }
+
+  // totalsBase: the non-VOID rows that financial totals are computed from.
+  // Scoped to the active status filter so totals match the visible table rows.
+  // For 'void' filter there are no non-VOID rows → all financial totals are 0.
+  let totalsBase = nonVoid
+  if (statusNorm === 'completed') {
+    totalsBase = nonVoid.filter(t => norm(t.sale_status_code) === 'COMPLETED')
+  } else if (statusNorm === 'pending') {
+    totalsBase = nonVoid.filter(t => norm(t.payment_status_code) === 'PENDING')
+  } else if (statusNorm === 'void') {
+    totalsBase = []
+  }
+
   const totals = {
-    total_transactions: transactions.length,
-    total_weigh: transactions.filter(t => t.product_type === 'Weigh').length,
-    total_reweigh: transactions.filter(t => t.product_type === 'Reweigh').length,
-    total_weight: transactions.reduce((sum, t) => sum + (parseFloat(t.gross_weight) || 0), 0),
-    total_subtotal: transactions.reduce((sum, t) => sum + (parseFloat(t.subtotal) || 0), 0),
-    total_tax: transactions.reduce((sum, t) => sum + (parseFloat(t.tax_amount) || 0), 0),
-    total_amount: transactions.reduce((sum, t) => sum + (parseFloat(t.total_amount) || 0), 0),
-    total_paid: transactions.reduce((sum, t) => {
-      if (norm(t.sale_status_code) === 'CANCELLED') return sum
+    total_transactions: totalsBase.length,
+    total_weigh: totalsBase.filter(t => t.product_type === 'Weigh').length,
+    total_reweigh: totalsBase.filter(t => t.product_type === 'Reweigh').length,
+    total_weight: totalsBase.reduce((sum, t) => sum + (parseFloat(t.gross_weight) || 0), 0),
+    total_subtotal: totalsBase.reduce((sum, t) => sum + (parseFloat(t.subtotal) || 0), 0),
+    total_tax: totalsBase.reduce((sum, t) => sum + (parseFloat(t.tax_amount) || 0), 0),
+    total_amount: totalsBase.reduce((sum, t) => sum + (parseFloat(t.total_amount) || 0), 0),
+    total_paid: totalsBase.reduce((sum, t) => {
       if (norm(t.payment_status_code) === 'RECEIVED') return sum + toNum(t.total_amount)
       return sum
     }, 0),
-    total_pending: transactions.reduce((sum, t) => {
-      if (norm(t.sale_status_code) === 'CANCELLED') return sum
+    total_pending: totalsBase.reduce((sum, t) => {
       if (norm(t.payment_status_code) === 'PENDING') return sum + toNum(t.total_amount)
       return sum
     }, 0),
-    count_paid: transactions.filter(t => t.payment_status_code === 'RECEIVED').length,
-    count_pending: transactions.filter(t => t.payment_status_code === 'PENDING').length,
-    count_cancelled: transactions.filter(t => t.sale_status_code === 'CANCELLED').length
+    count_paid: totalsBase.filter(t => norm(t.payment_status_code) === 'RECEIVED').length,
+    count_pending: totalsBase.filter(t => norm(t.payment_status_code) === 'PENDING').length,
+    // count_void always reflects all VOID transactions in the date range regardless of filter
+    count_void: allTransactions.filter(t => isVoid(t)).length
   }
 
-  const payment_summary = buildPaymentSummary(transactions)
+  // Payment summary scoped to the same totalsBase (excludes VOID, matches filter)
+  const payment_summary = buildPaymentSummary(totalsBase)
 
-  return { customer, transactions, totals, payment_summary }
+  return { customer, transactions: displayTransactions, totals, payment_summary }
 }
 
 /**
@@ -637,7 +666,7 @@ export const generatePdf = async (filters = {}) => {
         doc.fontSize(8).font('Helvetica-Bold')
         doc.fillColor(successColor).text(`Paid: ${totals.count_paid}`, marginLeft + 6, sy)
         doc.fillColor(warningColor).text(`Pending: ${totals.count_pending}`, marginLeft + 90, sy)
-        doc.fillColor(dangerColor).text(`Cancelled: ${totals.count_cancelled}`, marginLeft + 190, sy)
+        doc.fillColor(dangerColor).text(`Void: ${totals.count_void}`, marginLeft + 190, sy)
 
         sy += lineH
 
@@ -706,14 +735,14 @@ export const generatePdf = async (filters = {}) => {
       }
 
       const getStatusColor = (paymentStatus, saleStatus) => {
-        if (saleStatus === 'CANCELLED') return dangerColor
+        if (saleStatus === 'VOID') return dangerColor
         if (paymentStatus === 'RECEIVED') return successColor
         if (paymentStatus === 'PENDING') return warningColor
         return textGray
       }
 
       const getStatusLabel = (paymentStatus, saleStatus) => {
-        if (saleStatus === 'CANCELLED') return 'Cancelled'
+        if (saleStatus === 'VOID') return 'Void'
         if (paymentStatus === 'RECEIVED') return 'Paid'
         if (paymentStatus === 'PENDING') return 'Pending'
         return '-'
@@ -1487,7 +1516,7 @@ export const generateExcel = async (filters = {}) => {
   worksheet.getCell('A16').font = { color: { argb: '28A745' } }
   worksheet.getCell('B16').value = `Pending: ${totals.count_pending}`
   worksheet.getCell('B16').font = { color: { argb: 'FFC107' } }
-  worksheet.getCell('C16').value = `Cancelled: ${totals.count_cancelled}`
+  worksheet.getCell('C16').value = `Void: ${totals.count_void}`
   worksheet.getCell('C16').font = { color: { argb: 'DC3545' } }
 
   worksheet.getCell('A17').value = 'Subtotal:'
@@ -1548,11 +1577,11 @@ export const generateExcel = async (filters = {}) => {
 
   let currentRow = tableStartRow + 1
   transactions.forEach((row, index) => {
-    const statusLabel = row.sale_status_code === 'CANCELLED' ? 'Cancelled' :
+    const statusLabel = row.sale_status_code === 'VOID' ? 'Void' :
       row.payment_status_code === 'RECEIVED' ? 'Paid' :
         row.payment_status_code === 'PENDING' ? 'Pending' : '-'
 
-    const statusColor = row.sale_status_code === 'CANCELLED' ? 'DC3545' :
+    const statusColor = row.sale_status_code === 'VOID' ? 'DC3545' :
       row.payment_status_code === 'RECEIVED' ? '28A745' :
         row.payment_status_code === 'PENDING' ? 'FFC107' : '666666'
 

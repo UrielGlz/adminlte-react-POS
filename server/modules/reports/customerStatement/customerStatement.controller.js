@@ -7,7 +7,8 @@ export const getData = async (req, res, next) => {
       customer_id: req.query.customer_id || null,
       date_from: req.query.date_from || null,
       date_to: req.query.date_to || null,
-      include_tickets: req.query.include_tickets || null
+      include_tickets: req.query.include_tickets || null,
+      status: req.query.status || 'all'
     }
     const result = await CustomerStatementService.getData(filters)
     success(res, result)
@@ -27,7 +28,8 @@ export const downloadPdf = async (req, res, next) => {
       customer_id: req.query.customer_id || null,
       date_from: req.query.date_from || null,
       date_to: req.query.date_to || null,
-      include_tickets: req.query.include_tickets || null
+      include_tickets: req.query.include_tickets || null,
+      status: req.query.status || 'all'
     }
 
     if (!filters.customer_id) {
@@ -48,7 +50,8 @@ export const downloadExcel = async (req, res, next) => {
       customer_id: req.query.customer_id || null,
       date_from: req.query.date_from || null,
       date_to: req.query.date_to || null,
-      include_tickets: req.query.include_tickets || null
+      include_tickets: req.query.include_tickets || null,
+      status: req.query.status || 'all'
     }
 
     if (!filters.customer_id) {

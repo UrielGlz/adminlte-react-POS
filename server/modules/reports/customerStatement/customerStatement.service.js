@@ -666,7 +666,7 @@ export const generatePdf = async (filters = {}) => {
         doc.fontSize(8).font('Helvetica-Bold')
         doc.fillColor(successColor).text(`Paid: ${totals.count_paid}`, marginLeft + 6, sy)
         doc.fillColor(warningColor).text(`Pending: ${totals.count_pending}`, marginLeft + 90, sy)
-        doc.fillColor(dangerColor).text(`Void: ${totals.count_void}`, marginLeft + 190, sy)
+        // doc.fillColor(dangerColor).text(`Void: ${totals.count_void}`, marginLeft + 190, sy)
 
         sy += lineH
 
@@ -1516,7 +1516,7 @@ export const generateExcel = async (filters = {}) => {
   worksheet.getCell('A16').font = { color: { argb: '28A745' } }
   worksheet.getCell('B16').value = `Pending: ${totals.count_pending}`
   worksheet.getCell('B16').font = { color: { argb: 'FFC107' } }
-  worksheet.getCell('C16').value = `Void: ${totals.count_void}`
+  // worksheet.getCell('C16').value = `Void: ${totals.count_void}`
   worksheet.getCell('C16').font = { color: { argb: 'DC3545' } }
 
   worksheet.getCell('A17').value = 'Subtotal:'

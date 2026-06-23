@@ -3,7 +3,8 @@
     "allow": [
       "Bash(git commit *)",
       "Bash(git add *)",
-      "Bash(not exist *)"
+      "Bash(not exist *)",
+      "Bash(grep -E \"\\\\.\\(js|php\\)$\")"
     ]
   }
 }

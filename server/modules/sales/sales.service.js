@@ -117,7 +117,7 @@ export const getById = async (id) => {
 
   // If reweigh, get original sale info
   if (sale.reweigh_of_sale_id) {
-    const original = await query('SELECT sale_id, sale_uid, receipt_number, total, created_at FROM sales WHERE sale_id = ?', [sale.reweigh_of_sale_id])
+    const original = await query('SELECT sale_id, sales.sale_uid, receipt_number, total, created_at, t.ticket_number as ticket_number FROM sales JOIN tickets t ON sales.sale_uid = t.sale_uid WHERE sales.sale_uid = ?', [sale.reweigh_of_sale_id])
     sale.original_sale = original[0] || null
   }
 

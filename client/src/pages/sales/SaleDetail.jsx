@@ -296,7 +296,7 @@ function SaleDetail() {
             <div className="card shadow-sm border-info">
               <div className="card-header bg-info text-white"><h6 className="mb-0">Original Weigh</h6></div>
               <div className="card-body">
-                <p className="mb-1"><b>Sale #:</b> {sale.original_sale.sale_id}</p>
+                <p className="mb-1"><b>Sale #:</b> {sale.original_sale.ticket_number}</p>
                 <p className="mb-1"><b>Total:</b> {formatCurrency(sale.original_sale.total)}</p>
                 <p className="mb-0"><b>Date:</b> {formatDate(sale.original_sale.created_at)}</p>
               </div>
